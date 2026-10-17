@@ -16,6 +16,10 @@ build/
 graphify-out/
 .graphify_*.json
 .graphify_python
+# IntentGraph local memory archives — user data, never commit
+intentgraph-data/
+# Credentials — NEVER commit real keys; .env is loaded at runtime only
+.env
 .claude/
 skills/
 # The packaged skill bundles under graphify/skills/ are generated, committed

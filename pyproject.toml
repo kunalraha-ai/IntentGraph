@@ -117,6 +117,9 @@ all = ["mcp>=1,<3", "starlette>=1.3.1,<2", "neo4j", "falkordb", "pypdf>=6.16.1",
 [project.scripts]
 graphify = "graphify.__main__:main"
 graphify-mcp = "graphify.serve:_main"
+# IntentGraph — neural memory & retrieval intelligence on the Graphify core.
+# Same repo, one-way dependency: intentgraph imports graphify, never the reverse.
+intentgraph = "intentgraph.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -145,7 +148,12 @@ dev = [
 package = true
 
 [tool.setuptools]
-packages = ["graphify", "graphify.extractors", "graphify.exporters"]
+# `intentgraph` is the IntentGraph product package (memory + hybrid retrieval
+# + adaptive activation + evidence packets) that reuses graphify's graph
+# foundation. One repo, one shared core; the dependency is one-way —
+# intentgraph imports graphify (security, minhash, tokenizer, node-link
+# loading conventions), never the reverse.
+packages = ["graphify", "graphify.extractors", "graphify.exporters", "intentgraph"]
 include-package-data = false
 
 [tool.setuptools.package-data]
@@ -176,6 +184,6 @@ target-version = "py310"
 select = ["E9", "F63", "F7", "F82"]
 
 [tool.pyright]
-include = ["graphify", "tests"]
+include = ["graphify", "intentgraph", "tests"]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"

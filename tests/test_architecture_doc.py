@@ -29,28 +29,48 @@ _ROW = re.compile(r"^\|\s*`(\w+)\.py`\s*\|(.*?)\|", re.MULTILINE)
 _FUNC = re.compile(r"`([a-z_][a-z0-9_]*)(?:\(|`)")
 
 
-def _documented_symbols() -> list[tuple[str, str]]:
-    """(module, function) for every function named in the module table."""
+def _documented_symbols(section: str, package: str) -> list[tuple[str, str]]:
+    """(module, function) for every function named in a module table."""
     text = _ARCHITECTURE.read_text(encoding="utf-8")
-    start = text.index("## Module responsibilities")
-    end = text.index("##", start + 3)
+    start = text.index(section)
+    # a section can be the last one in the file: no following "##" exists
+    try:
+        end = text.index("##", start + 3)
+    except ValueError:
+        end = len(text)
     pairs: list[tuple[str, str]] = []
     for module, cell in _ROW.findall(text[start:end]):
         for func in _FUNC.findall(cell):
-            pairs.append((f"graphify.{module}", func))
+            pairs.append((f"{package}.{module}", func))
     return pairs
+
+
+def _documented_symbols_legacy() -> list[tuple[str, str]]:
+    """Back-compat alias for the graphify section (see _documented_symbols)."""
+    return _documented_symbols("## Module responsibilities", "graphify")
+
+
+# The IntentGraph layer documents its package in its own table (#2640 rule
+# extended): every lowercase symbol it names must be importable from
+# `intentgraph.<module>`, exactly as the graphify table is enforced.
+_SYMBOLS = (
+    _documented_symbols_legacy()
+    + _documented_symbols("## IntentGraph layer", "intentgraph")
+)
 
 
 def test_the_table_was_actually_parsed():
     """Guard the parser itself: a regex that silently matches nothing would make
     every parametrized test below vacuous."""
-    pairs = _documented_symbols()
+    pairs = _SYMBOLS
     assert len(pairs) >= 10, f"parsed too few symbols, regex likely broken: {pairs}"
     modules = {m for m, _ in pairs}
     assert {"graphify.extract", "graphify.build", "graphify.serve"} <= modules, modules
+    # the intentgraph table must be picked up too, or its rows are unchecked
+    assert any(m.startswith("intentgraph.") for m in modules), modules
 
 
-@pytest.mark.parametrize("module,func", _documented_symbols())
+@pytest.mark.parametrize("module,func", _SYMBOLS)
 def test_architecture_table_symbols_exist(module, func):
     mod = importlib.import_module(module)
     assert hasattr(mod, func), (

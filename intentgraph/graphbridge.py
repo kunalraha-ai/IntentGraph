@@ -1,0 +1,200 @@
+"""Graphify integration: bridge memories into a graph.json code graph.
+
+A memory record may carry ``graph_anchors``: node ids from a Graphify
+``graph.json`` (the ones produced by ``graphify extract`` — file nodes,
+symbol nodes, rationale nodes). **Anchor ids follow graphify's on-disk id
+scheme** — path-flattened, e.g. ``graphify_llm`` for ``graphify/llm.py``,
+``intentgraph_models_memoryrecord`` for a class — the exact ids graphify's
+own tools (``explain``, MCP ``get_node``) accept. This bridge lets retrieval
+follow *code structure*, not just memory edges: "the decision about the auth
+middleware" can surface "the test run for auth middleware" because both
+records anchor inside the same neighborhood of the code graph, even with no
+memory edge between them.
+
+Reuse, not duplication: the node-link graph is loaded with networkx's
+``json_graph.node_link_graph`` exactly like ``graphify.serve._load_graph``
+and the CLI ``query`` path (undirected traversal view, per-edge ``_src``/
+``_tgt`` direction markers preserved) so anchor ids and hop semantics match
+what Graphify's own tools see. Loading lives here in ~20 lines rather than
+importing ``graphify.serve`` so the memory server never drags in MCP
+machinery.
+
+All expansion is bounded (hop depth, fan-out, total nodes) and deterministic.
+If the graph file is missing, malformed, or empty, the bridge degrades to
+"no code-adjacency" and says so — never to an exception in the query path.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Iterable, Sequence
+
+from intentgraph.models import MemoryRecord
+
+__all__ = ["GraphifyBridge"]
+
+_MAX_GRAPH_BYTES = 200 * 1024 * 1024  # same order as graphify's own cap
+
+
+class GraphifyBridge:
+    """Bounded neighbor queries over a Graphify graph.json."""
+
+    def __init__(self, graph_path: str | Path | None):
+        self.graph_path = str(graph_path) if graph_path else ""
+        self._G = None
+        self._anchor_index: dict[str, set[str]] = {}  # node id → record ids
+        self._load_error: str = ""
+        if graph_path:
+            self._load(graph_path)
+
+    # -- loading ---------------------------------------------------------------
+
+    @property
+    def available(self) -> bool:
+        return self._G is not None and self._G.number_of_nodes() > 0
+
+    @property
+    def load_error(self) -> str:
+        return self._load_error
+
+    @property
+    def node_count(self) -> int:
+        return self._G.number_of_nodes() if self._G is not None else 0
+
+    def _load(self, graph_path: str | Path) -> None:
+        try:
+            p = Path(graph_path)
+            if not p.exists():
+                self._load_error = f"graph file not found: {p}"
+                return
+            if p.stat().st_size > _MAX_GRAPH_BYTES:
+                self._load_error = (f"graph file exceeds safety cap "
+                                    f"({_MAX_GRAPH_BYTES} bytes): {p}")
+                return
+            import networkx as nx
+            from networkx.readwrite import json_graph
+
+            data = json.loads(p.read_text(encoding="utf-8"))
+            if "links" not in data and "edges" in data:
+                data = dict(data, links=data["edges"])
+            # Mirror the CLI `query` loader: traverse undirected so a leaf
+            # symbol's callers are reachable, keep true direction per edge.
+            data = dict(data, directed=False)
+            data = dict(
+                data,
+                links=[
+                    {**link,
+                     "_src": link.get("_src", link.get("source")),
+                     "_tgt": link.get("_tgt", link.get("target"))}
+                    for link in data.get("links", [])
+                ],
+            )
+            try:
+                G = json_graph.node_link_graph(data, edges="links")
+            except TypeError:
+                G = json_graph.node_link_graph(data)
+            if G.is_directed():
+                H = nx.MultiGraph() if G.is_multigraph() else nx.Graph()
+                H.add_nodes_from(G.nodes(data=True))
+                for u, v, d in G.edges(data=True):
+                    H.add_edge(u, v, **d)
+                G = H
+            self._G = G
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            self._load_error = f"could not load graph: {exc}"
+
+    # -- anchor indexing ---------------------------------------------------------
+
+    def index_records(self, records: Iterable[MemoryRecord]) -> int:
+        """(Re)build node-id → record-ids index from the archive's anchors."""
+        self._anchor_index.clear()
+        n = 0
+        for rec in records:
+            for anchor in rec.graph_anchors:
+                self._anchor_index.setdefault(anchor, set()).add(rec.id)
+                n += 1
+        return n
+
+    def records_at(self, node_id: str) -> set[str]:
+        return set(self._anchor_index.get(node_id, ()))
+
+    def _neighbors_bounded(self, start: str, depth: int, fanout: int,
+                           cap: int) -> set[str]:
+        """BFS neighborhood of a node with per-hop and total caps."""
+        G = self._G
+        if G is None:  # pragma: no cover — callers gate on `available`
+            return {start}
+        out: set[str] = {start}
+        frontier = [start]
+        for _ in range(max(0, depth)):
+            nxt: list[str] = []
+            for node in frontier:
+                if len(out) >= cap:
+                    return out
+                neigh = sorted(G.neighbors(node))
+                for nb in neigh[:fanout]:
+                    if nb not in out:
+                        out.add(nb)
+                        nxt.append(nb)
+                        if len(out) >= cap:
+                            return out
+            frontier = nxt
+        return out
+
+    # -- queries ------------------------------------------------------------------
+
+    def related_records(
+        self,
+        seed_record_ids: Sequence[str],
+        records_by_id: dict[str, MemoryRecord],
+        *,
+        depth: int = 2,
+        fanout: int = 12,
+        cap: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Record ids code-adjacent to the seeds, with the hop path.
+
+        Returns candidates shaped like retriever hits:
+        ``{"id", "score", "via", "anchor"}`` where ``via`` is the chain
+        of node hops from a seed's anchor to the related record's anchor.
+        Deterministic: neighbors sorted, dedup by best score.
+        """
+        if not self.available:
+            return []
+        import networkx as nx
+
+        G = self._G
+        assert G is not None  # available implies _G loaded
+        seeds = [rid for rid in seed_record_ids if rid in records_by_id]
+        if not seeds:
+            return []
+        best: dict[str, dict[str, Any]] = {}
+        for rid in seeds:
+            rec = records_by_id[rid]
+            for anchor in rec.graph_anchors:
+                if anchor not in G:
+                    continue
+                hood = self._neighbors_bounded(anchor, depth, fanout, cap)
+                for node in hood:
+                    for other_rid in self.records_at(node):
+                        if other_rid == rid:
+                            continue
+                        # score decays with BFS distance from the anchor
+                        try:
+                            dist = nx.shortest_path_length(G, anchor, node)
+                        except Exception:
+                            dist = depth
+                        score = 0.5 / (1.0 + dist)
+                        prev = best.get(other_rid)
+                        if prev is None or score > prev["score"]:
+                            best[other_rid] = {
+                                "id": other_rid,
+                                "score": round(score, 6),
+                                "via": f"{anchor} ~{dist} hop(s)~ {node}",
+                                "anchor": node,
+                                "matched_terms": [anchor],
+                                "term_scores": {},
+                            }
+        out = sorted(best.values(), key=lambda c: (-c["score"], c["id"]))
+        return out

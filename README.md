@@ -1,3 +1,11 @@
+> **This repository is IntentGraph** — a fork of
+> [Graphify-Labs/graphify](https://github.com/Graphify-Labs/graphify) (Apache-2.0)
+> extended with IntentGraph: persistent memory and retrieval intelligence for AI
+> systems — memory archive, adaptive evidence retrieval, agent tools (MCP), and
+> Nebius/NVIDIA/Tavily provider integrations. Graphify's original functionality is
+> preserved unchanged. Start at **[docs/intentgraph.md](./docs/intentgraph.md)**;
+> the original Graphify README follows below.
+
 <p align="center">
   <a href="https://graphify.com"><img src="https://raw.githubusercontent.com/Graphify-Labs/graphify/v8/docs/graphify-logo.png" width="480" height="252" alt="Graphify"/></a>
 </p>
@@ -115,6 +123,44 @@ What you get out of the box:
 | **Rationale + doc refs** | `# NOTE:` / `# WHY:` comments and ADR/RFC citations become first-class nodes linked to the code |
 | **Beyond code** | Docs, PDFs, images, and video/audio all map into the same graph |
 | **Local-first** | Code is parsed locally with tree-sitter (no LLM, nothing leaves your machine); only the semantic pass over docs/media calls a backend, and only if you configure one |
+
+---
+
+## IntentGraph — memory & retrieval intelligence
+
+**IntentGraph** (in this repo, `intentgraph/`) turns Graphify's graph foundation into
+a persistent memory and evidence-retrieval system for AI agents: ingest memories with
+provenance and versioning, connect them with typed relationships (`caused_by`,
+`failed_because_of`, `supersedes`, `contradicts`, …), retrieve through a hybrid
+lexical/semantic/graph pipeline, and get back a **token-budgeted, source-referenced
+evidence packet** with contradictions, limitations, and an explicit
+sufficient/insufficient verdict — never a fabricated answer.
+
+```bash
+.venv/bin/python -m intentgraph ingest --text "ADR-14: amounts are integer minor units." --type decision
+.venv/bin/python -m intentgraph remember "what did we decide about amounts, and why?"
+.venv/bin/python -m intentgraph api     # local JSON HTTP API (127.0.0.1:8710)
+.venv/bin/python -m intentgraph benchmark
+```
+
+Local-first and deterministic by default (no model, no key, no network);
+embeddings (OpenAI-compatible, NVIDIA NIM, Ollama) and the Graphify code-graph
+bridge are opt-in. Full guide: **[docs/intentgraph.md](./docs/intentgraph.md)**,
+runnable demo: **[examples/intentgraph-demo.sh](./examples/intentgraph-demo.sh)**.
+
+**Agent tools**: the graphify MCP server also exposes four memory tools —
+`remember`, `recall`, `context`, `feedback` (OpenCode setup in
+`docs/intentgraph.md#opencode-setup-v2` exposes them as `intentgraph_*`) so a
+coding agent can save important decisions, failed approaches, and test
+outcomes during a session and recover them — with provenance, conflict flags,
+and stale-evidence warnings — in fresh sessions.
+
+**Optional external providers (Phase 3)**: Nebius Token Factory (real
+embeddings with model discovery and safe reindex-on-model-change, optional
+LLM-assisted retrieval planning, optional reranking over `/v1/rerank`) and
+Tavily web search (selective, controller-driven external research with full
+provenance and explicit opt-in persistence) — all off by default; local-only
+mode stays network-free. Guide: `docs/intentgraph.md#external-providers-phase-3-nebius-token-factory--tavily`.
 
 ---
 

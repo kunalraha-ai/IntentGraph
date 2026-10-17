@@ -100,3 +100,41 @@ pytest tests/ -q
 ```
 
 The test suite is designed to avoid network access and uncontrolled filesystem effects; most tests are isolated with temporary directories and environment fixtures.
+
+## IntentGraph layer (`intentgraph/`)
+
+IntentGraph — persistent memory and retrieval intelligence for AI systems — is a
+separate top-level package in this same repo. One-way dependency:
+`intentgraph` imports `graphify` (security helpers, MinHash near-dup machinery,
+the tiktoken tokenizer helper, node-link graph-loading conventions); `graphify`
+never imports `intentgraph`. Full guide: `docs/intentgraph.md`.
+
+Pipeline: `ingest → store → retrieve (lexical/semantic/graph, RRF) → verify →
+adaptive controller (gap-targeted iterations) → compile_context (token-budgeted
+evidence packet)`.
+
+| Module | Entry point(s) | Input → Output |
+|--------|----------------|----------------|
+| `models.py` | `MemoryRecord`, `MemoryEdge`, `Feedback` | raw fields → validated memory records/edges (stable ids, content hash, provenance, validity) |
+| `store.py` | `MemoryStore` | records/edges → SQLite archive with append-only version history, soft delete, tombstones |
+| `ingest.py` | `ingest`, `ingest_file`, `ingest_dict`, `Ingestor` | untrusted text → stored record + auto-links (mentions, MinHash near-duplicates) |
+| `lexindex.py` | `tokenize`, `BM25Index` | text → stemmed postings; query → ranked candidates with per-term transparency |
+| `embeddings.py` | `provider_from_config`, `SemanticIndex` | config → embedding provider (none/hash/nebius/openai-compatible); text → stored vectors → cosine hits |
+| `websearch.py` | `provider_from_config`, `TavilySearchProvider`, `parse_provider_date`, `store_external_result` | config → web-search provider (none/tavily); query → ExternalEvidence with full provenance (never a user memory) |
+| `llmassist.py` | `llm_policy_from_config`, `LLMPolicy` | question/coverage report → schema-validated LLM plans (requirements, action selection) with deterministic fallback |
+| `rerank.py` | `reranker_from_config`, `NebiusReranker` | (query, excerpts) → relevance order over Token Factory's /v1/rerank; ordering-only, classified failures |
+| `retrieve.py` | `fuse_rrf`, `RetrievalEngine` | query + indexes → fused candidates (RRF over exact/lexical/semantic + bounded graph expansion) |
+| `verify.py` | `analyze_requirements`, `topical_terms`, `verify_evidence` | selected records → checks (provenance, validity, temporal), conflicts, coverage, verdict |
+| `controller.py` | `AdaptiveMemoryEngine` (`.run`) | question → iterative retrieve→expand→verify loop with gap-targeted follow-ups and stopping conditions |
+| `context.py` | `compile_context`, `estimate_tokens` | verified evidence → token-budgeted packet (dict + text) with untrusted-evidence fencing |
+| `graphbridge.py` | `GraphifyBridge` | `graph.json` + records with `graph_anchors` → code-adjacent record candidates |
+| `config.py` | `load_config` | defaults + JSON file + env + args → resolved `Config` (privacy hard-stop included) |
+| `sdk.py` | `IntentGraph` | everything above behind one facade (`ingest`, `retrieve`, `remember`, `export`, `status`, ...) |
+| `scenario.py` | `seed` | empty archive → canonical benchmark corpus (shared with tests) |
+| `eval.py` | `run_benchmark` | — → deterministic benchmark report (recall/precision/abstention/tokens) |
+| `api.py` | `serve`, `make_server` | resolved Config → local JSON HTTP API (`/v1/memories`, `/v1/retrieve`, `/v1/context`, `/v1/feedback`, `/health`) |
+| `cli.py` | `main`, `build_parser` | argv → subcommands (also reachable as `graphify intent ...`) |
+| `mcp.py` | `tool_schemas`, `tool_remember`, `tool_recall`, `tool_context`, `tool_feedback`, `IntentGraphSessions` | validated agent-tool args (from the graphify MCP server's registered `remember`/`recall`/`context`/`feedback` tools) → SDK calls → compact JSON / evidence-packet text |
+
+The IntentionGraph table follows the same no-drift rule: every lowercase symbol
+it names is importable (guarded by `tests/test_architecture_doc.py`).

@@ -6,3 +6,13 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 Portions of this software were contributed under the MIT License prior to the
 relicensing and remain available under those terms. The original MIT license
 text is retained in LICENSE-MIT.
+
+IntentGraph additions
+Copyright 2026 Kunal Raha
+
+This repository is a fork of Graphify (https://github.com/Graphify-Labs/graphify),
+extended with the IntentGraph subsystems: persistent memory archive, associative
+memory graph, hybrid and adaptive retrieval, evidence verification, context
+packets, MCP agent tools, and the Nebius/NVIDIA/Tavily provider integrations.
+The Graphify code is unmodified in function and remains under the Apache
+License, Version 2.0; IntentGraph additions are under the same license.

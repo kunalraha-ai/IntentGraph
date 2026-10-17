@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,13 @@ def _sandbox_home(tmp_path_factory, monkeypatch):
     touch the developer's real ~/.claude, ~/.gemini, ~/.codebuddy, ~/.copilot,
     ~/.config, ~/.agents (issue #2168).
 
+    Also the credentials/credentials-hermeticity guard for the IntentGraph
+    provider surface: the ordinary suite must never read the developer's
+    .env or carry provider keys into ambient configuration, even on a
+    machine with real Nebius/Tavily credentials configured (Phase 3).
+    Live-mode runs (INTENTGRAPH_LIVE_TESTS=1) are exempt: they are the
+    explicit opt-in that is allowed to use real credentials.
+
     Allocated via tmp_path_factory (not inside tmp_path) so tests that assert
     the exact contents of their own tmp_path are unaffected."""
     home = tmp_path_factory.mktemp("sandbox-home")
@@ -62,6 +70,26 @@ def _sandbox_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)     # escape hatch that bypasses Path.home
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+    # --- IntentGraph provider hermeticity (Phase 3) --------------------------
+    # Live mode is exempt: it is the explicit opt-in for real credentials.
+    if os.environ.get("INTENTGRAPH_LIVE_TESTS", "").strip() == "1":
+        return home
+    # Otherwise: the ordinary suite must neither read the developer's .env
+    # nor inherit provider keys — it stays offline and credential-free no
+    # matter what this machine has configured. Tests that deliberately set
+    # a key do so with their own monkeypatch, which runs after this.
+    monkeypatch.setenv("INTENTGRAPH_DISABLE_DOTENV", "1")
+    for key in list(os.environ):
+        is_provider_config = (
+            key.startswith("INTENTGRAPH_")
+            and any(s in key for s in ("EMBEDDING", "LLM", "RERANKER",
+                                       "WEB_SEARCH", "ENV_FILE")))
+        is_credential = key in ("NEBIUS_API_KEY", "NEBIUS_TOKEN_FACTORY_KEY",
+                                "NVIDIA_API_KEY", "TAVILY_API_KEY",
+                                "OPENAI_API_KEY")
+        if is_provider_config or is_credential:
+            monkeypatch.delenv(key, raising=False)
     return home
 
 @pytest.fixture(autouse=True)

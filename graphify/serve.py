@@ -1832,6 +1832,50 @@ def _build_server(graph_path: str):
     _default_graph_path = str(Path(graph_path).resolve())
     _ctx_cache = _GraphContextCache(_max_server_contexts())
 
+    # IntentGraph memory tools: remember / recall / context / feedback. They
+    # ride this same server but are a pure delegation surface — validation
+    # plus the bounded per-project archive cache live in intentgraph.mcp, and
+    # storage/retrieval stay in the one SDK implementation. A broken
+    # intentgraph import must not take the graph server down with it: the
+    # graph tools predate this and keep working, with one stderr note.
+    _ig_available = True
+    try:
+        from intentgraph import mcp as _ig_mcp
+    except ImportError as _ig_exc:  # pragma: no cover — same-wheel package
+        _ig_available = False
+        print(f"[graphify] note: intentgraph memory tools unavailable: {_ig_exc}",
+              file=sys.stderr)
+
+    _ig_sessions = _ig_mcp.IntentGraphSessions() if _ig_available else None
+
+    def _bind_ig_tool(fn):
+        def handler(arguments: dict) -> str:
+            try:
+                return fn(_ig_sessions, arguments)
+            except _ig_mcp.MCPToolError as exc:
+                # mirror the ToolError contract: a validation failure is an
+                # isError result the agent can read and correct, not a crash
+                raise ToolError(str(exc)) from exc
+        return handler
+
+    _ig_handlers = {
+        "remember": _bind_ig_tool(_ig_mcp.tool_remember),
+        "recall": _bind_ig_tool(_ig_mcp.tool_recall),
+        "context": _bind_ig_tool(_ig_mcp.tool_context),
+        "feedback": _bind_ig_tool(_ig_mcp.tool_feedback),
+    } if _ig_available else {}
+
+    _ig_schemas = _ig_mcp.tool_schemas() if _ig_available else []
+    # Tool names inside the MCP server are bare (remember, recall, ...);
+    # clients prefix them with the server name — an OpenCode registration
+    # named "intentgraph" exposes exactly intentgraph_remember, intentgraph_
+    # recall, intentgraph_context, intentgraph_feedback.
+    _ig_instructions = (
+        "Graph tools (query_graph, get_node, get_neighbors, shortest_path, ...) "
+        "answer questions about the current code structure. "
+        + _ig_mcp.SERVER_INSTRUCTIONS
+    ) if _ig_available else None
+
     def _load_ctx(path: str):
         """Return the current default or project graph context as a tool error.
 
@@ -2030,6 +2074,15 @@ def _build_server(graph_path: str):
                     "this server was started with."
                 ),
             }
+        # IntentGraph memory tools are appended AFTER that loop: the loop's
+        # project_path description is graph-specific and would otherwise
+        # overwrite the memory tools' own archive-oriented description.
+        for _spec in _ig_schemas:
+            _tools.append(types.Tool(
+                name=_spec["name"],
+                description=_spec["description"],
+                inputSchema=_spec["inputSchema"],
+            ))
         return _tools
 
     def _tool_query_graph(arguments: dict) -> str:
@@ -2277,6 +2330,7 @@ def _build_server(graph_path: str):
         "list_prs": _tool_list_prs,
         "get_pr_impact": _tool_get_pr_impact,
         "triage_prs": _tool_triage_prs,
+        **_ig_handlers,
     }
 
     def _load_community_labels() -> dict[int, str]:
@@ -2358,7 +2412,15 @@ def _build_server(graph_path: str):
         if not handler:
             return [types.TextContent(type="text", text=f"Unknown tool: {name}")]
         try:
-            _select_graph(project_path)  # bind G/communities to the target graph
+            if name in _ig_handlers:
+                # Memory tools bind their own per-project archive and must
+                # NOT require a graph.json to exist — a project can carry
+                # memories without ever having built a code graph, so the
+                # graph-context binding below is skipped for them.
+                if project_path is not None:
+                    arguments["project_path"] = project_path
+            else:
+                _select_graph(project_path)  # bind G/communities to the target graph
             return [types.TextContent(type="text", text=handler(arguments))]
         except ToolError:
             # A handler-signalled error: propagate so the result is marked
@@ -2371,7 +2433,11 @@ def _build_server(graph_path: str):
     if hasattr(Server, "list_tools"):
         # mcp 1.x: decorator-based registration. The SDK wraps the raw returns
         # (list[Tool] -> ListToolsResult, str -> resource contents) itself.
-        server = Server("graphify")
+        # `instructions` travels to the client: OpenCode and other
+        # instructions-honoring MCP hosts inject it into the system prompt, so
+        # the memory-tool usage rules ride WITH the tools rather than living
+        # only in a repo instruction file the agent might never read.
+        server = Server("graphify", instructions=_ig_instructions)
         server.list_tools()(list_tools)
         server.call_tool()(call_tool)
         server.list_resources()(list_resources)
@@ -2411,6 +2477,7 @@ def _build_server(graph_path: str):
         server = Server(
             "graphify",
             version=_version,
+            instructions=_ig_instructions,
             on_list_tools=_on_list_tools,
             on_call_tool=_on_call_tool,
             on_list_resources=_on_list_resources,

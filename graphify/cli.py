@@ -1062,6 +1062,15 @@ def _reenter_main() -> None:
 
 
 def dispatch_command(cmd: str) -> None:
+    if cmd == "intent":
+        # IntentGraph (persistent memory + hybrid/adaptive retrieval +
+        # evidence packets) ships in this same package but as its own
+        # top-level module — one-way dependency: intentgraph imports
+        # graphify, never the reverse. Delegating the whole argv keeps the
+        # `graphify intent ...` surface in lockstep with `intentgraph ...`
+        # without growing this dispatch table by fifteen subcommands.
+        from intentgraph.cli import main as _ig_main
+        sys.exit(_ig_main(sys.argv[2:]))
     if cmd == "provider":
         from graphify.llm import _custom_providers_path, BACKENDS
         import json as _json
