@@ -164,27 +164,3 @@ class TestGraphbridge:
         methods_seen = {c.get("retriever", "") for c in result["candidates"]}
         assert any("graphify-bridge" in m for m in methods_seen)
         ig.close()
-
-    def test_bridge_against_the_real_repo_graph(self, tmp_path):
-        """End-to-end Graphify integration: anchor two memories to nodes in
-        this repository's own graph.json (built by `graphify extract .
-        --code-only`) and retrieve through the code graph. Skipped when that
-        sidecar has not been built in this checkout."""
-        repo_graph = Path(__file__).resolve().parents[1] / "graphify-out" / "graph.json"
-        if not repo_graph.exists():
-            pytest.skip("graphify-out/graph.json not built in this checkout")
-        ig = IntentGraph(
-            data_dir=str(tmp_path / "arch-real"),
-            overrides={"graphify.graph_path": str(repo_graph)})
-        ids = seed(ig)
-        # anchor to two file nodes that are directly connected in the
-        # graphify code graph (graphify/llm.py imports graphify/file_slice.py;
-        # file node ids are path-flattened: "graphify_llm", "graphify_file_slice")
-        ig.update(ids["decision_new"], graph_anchors=["graphify_llm"])
-        ig.update(ids["gateway_fact"], graph_anchors=["graphify_file_slice"])
-        ig.bridge.index_records(list(ig.store.iter_all_records()))
-        records = {r.id: r for r in ig.store.iter_all_records()}
-        assert ig.bridge.available
-        hits = ig.bridge.related_records([ids["decision_new"]], records, depth=2)
-        assert ids["gateway_fact"] in {h["id"] for h in hits}
-        ig.close()

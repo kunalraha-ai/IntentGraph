@@ -1,14 +1,12 @@
 """Tests for intentgraph.mcp (native agent tools) + the serve.py MCP wiring.
 
-Three layers, matching how the repo tests MCP surfaces (test_serve.py tests
-helpers without the mcp package; test_serve_http drives the full server):
+Three layers:
 
 1. Pure tool functions — no mcp import needed, runs everywhere.
 2. The end-to-end session regression scenario (Step-4 spec): a session that
    remembers a failure trail, then a *fresh* session that must recover it by
    record id and content — not by plausible-looking text.
-3. serve.py wiring — skipped when the optional mcp extra is absent, exactly
-   like tests/test_serve_http.py.
+3. intentgraph.serve wiring — skipped when the optional mcp extra is absent.
 """
 from __future__ import annotations
 
@@ -442,116 +440,10 @@ class TestSessionRegressionScenario:
 # --- Step 3 wiring: the serve.py MCP surface (skip without the mcp extra) ---------------
 
 
-class TestMCPWiring:
-    """The graphify MCP server exposes the memory tools beside the graph tools.
-
-    Driven synchronously via ``asyncio.run`` on the registered request
-    handlers — the repo has no async pytest plugin (upstream tests run
-    coroutines by awaiting them inside sync tests too).
-    """
-
-    def _server(self, project, graph: bool):
-        import json as _json
-        if graph:
-            gpath = project / "graph.json"
-            gpath.write_text(_json.dumps(
-                {"directed": False,
-                 "nodes": [{"id": "a", "label": "Alpha"}], "links": []}))
-            graph_path = str(gpath)
-        else:
-            # no graph at all: memory-only project
-            graph_path = str(project / "missing.json")
-        from graphify import serve as serve_mod
-        return serve_mod._build_server(graph_path)
-
-    @pytest.fixture(autouse=True)
-    def _needs_mcp(self):
-        pytest.importorskip("mcp")
-
-    def _call(self, server, name, arguments):
-        import asyncio
-        from mcp import types as mcp_types
-
-        async def run():
-            handler = server.request_handlers[mcp_types.CallToolRequest]
-            result = await handler(mcp_types.CallToolRequest(
-                params=mcp_types.CallToolRequestParams(name=name,
-                                                       arguments=arguments)))
-            return result.root if hasattr(result, "root") else result
-        return asyncio.run(run())
-
-    def _list(self, server):
-        import asyncio
-        from mcp import types as mcp_types
-
-        async def run():
-            handler = server.request_handlers[mcp_types.ListToolsRequest]
-            return (await handler(None)).root.tools
-        return asyncio.run(run())
-
-    def test_tools_registered_with_own_descriptions(self, project):
-        server = self._server(project, graph=True)
-        tools = {t.name: t for t in self._list(server)}
-        for name in ("remember", "recall", "context", "feedback"):
-            assert name in tools
-        # the memory tools' project_path description is archive-oriented,
-        # NOT overwritten by the graph loop's graph.json wording
-        schema = tools["remember"].inputSchema if hasattr(
-            tools["remember"], "inputSchema") else tools["remember"].input_schema
-        assert "intentgraph-data" in schema["properties"]["project_path"]["description"]
-        # memory descriptions mention WHEN to call
-        assert "before substantial changes" in tools["recall"].description.lower()
-
-    def test_instructions_travel_with_the_server(self, project):
-        server = self._server(project, graph=True)
-        assert server.instructions
-        assert "intentgraph_recall" in server.instructions
-        assert "never store secrets" in server.instructions.lower()
-
-    def test_memory_tool_works_without_a_graph(self, project):
-        # the key routing property: a project with memory but NO graph.json
-        server = self._server(project, graph=False)
-        result = self._call(server, "remember", {
-            "content": "decision made without any code graph",
-            "type": "decision",
-            "project_path": str(project)})
-        assert result.isError is not True
-        saved = json.loads(result.content[0].text)
-        assert saved["id"].startswith("mem_")
-
-        result = self._call(server, "recall", {
-            "query": "the decision about the code graph",
-            "project_path": str(project)})
-        assert result.isError is not True
-        payload = json.loads(result.content[0].text)
-        assert saved["id"] in [r["id"] for r in payload["results"]]
-
-    def test_validation_failure_is_an_iserror_result(self, project):
-        server = self._server(project, graph=True)
-        result = self._call(server, "remember", {
-            "content": "   ",  # empty
-            "project_path": str(project)})
-        assert result.isError is True
-        assert "content" in result.content[0].text
-
-    def test_graph_tools_still_work_alongside(self, project):
-        server = self._server(project, graph=True)
-        result = self._call(server, "graph_stats", {})
-        assert result.isError is not True
-        assert "Nodes" in result.content[0].text
-
-    def test_project_scoping_across_tools(self, project, tmp_path):
-        other = tmp_path / "other-project"
-        other.mkdir()
-        server = self._server(project, graph=False)
-        a = json.loads(self._call(server, "remember", {
-            "content": "belongs to project A", "project_path": str(project)}
-            ).content[0].text)
-        result = self._call(server, "recall", {
-            "query": "belongs to project", "project_path": str(other)})
-        assert result.isError is not True
-        payload = json.loads(result.content[0].text)
-        assert a["id"] not in [r["id"] for r in payload["results"]]
+# mcp 1.x names it isError, 2.x is_error — read whichever the installed
+# major version models, the assertion is about the semantics.
+def _is_error(result) -> bool:
+    return bool(getattr(result, "isError", getattr(result, "is_error", False)))
 
 
 class TestIntentGraphServe:
@@ -559,8 +451,10 @@ class TestIntentGraphServe:
 
     Same tool implementations (intentgraph.mcp), own registration: slim
     server, memory tools, usage instructions; no graph dependencies.
-    Driven synchronously via asyncio.run on the registered request handlers,
-    matching the repo's async-in-sync convention.
+    Driven synchronously via asyncio.run on the registered request
+    handlers, dual-compat across the mcp 1.x registry (request_handlers,
+    request-object args) and the 2.x API (get_request_handler, (ctx,
+    params) args) — the same two surfaces intentgraph/serve.py registers.
     """
 
     @pytest.fixture(autouse=True)
@@ -574,22 +468,34 @@ class TestIntentGraphServe:
     def _call(self, server, name, arguments):
         import asyncio
         from mcp import types as mcp_types
+        params = mcp_types.CallToolRequestParams(name=name,
+                                                 arguments=arguments)
 
-        async def run():
-            handler = server.request_handlers[mcp_types.CallToolRequest]
-            result = await handler(mcp_types.CallToolRequest(
-                params=mcp_types.CallToolRequestParams(name=name,
-                                                       arguments=arguments)))
-            return result.root if hasattr(result, "root") else result
+        if hasattr(server, "request_handlers"):  # mcp 1.x registry
+            async def run():
+                handler = server.request_handlers[mcp_types.CallToolRequest]
+                result = await handler(mcp_types.CallToolRequest(params=params))
+                return result.root if hasattr(result, "root") else result
+        else:                                    # mcp 2.x registry
+            async def run():
+                entry = server.get_request_handler("tools/call")
+                result = await entry.handler(None, params)
+                return result.root if hasattr(result, "root") else result
         return asyncio.run(run())
 
     def _list(self, server):
         import asyncio
         from mcp import types as mcp_types
 
-        async def run():
-            handler = server.request_handlers[mcp_types.ListToolsRequest]
-            return (await handler(None)).root.tools
+        if hasattr(server, "request_handlers"):  # mcp 1.x registry
+            async def run():
+                handler = server.request_handlers[mcp_types.ListToolsRequest]
+                return (await handler(None)).root.tools
+        else:                                    # mcp 2.x registry
+            async def run():
+                entry = server.get_request_handler("tools/list")
+                result = await entry.handler(None, None)
+                return (result.root if hasattr(result, "root") else result).tools
         return asyncio.run(run())
 
     def test_exactly_the_four_memory_tools(self):
@@ -610,7 +516,7 @@ class TestIntentGraphServe:
         result = self._call(server, "remember", {
             "content": "the archive must survive a server swap",
             "type": "fact", "project_path": str(project)})
-        assert result.isError is not True
+        assert not _is_error(result)
         saved = json.loads(result.content[0].text)
         result = self._call(server, "recall", {
             "query": "server swap survival", "project_path": str(project)})
@@ -621,7 +527,7 @@ class TestIntentGraphServe:
         server = self._server()
         result = self._call(server, "remember", {
             "content": "   ", "project_path": str(tmp_path)})
-        assert result.isError is True
+        assert _is_error(result)
         assert "content" in result.content[0].text
 
     def test_entry_point_module_resolves(self):
@@ -632,5 +538,22 @@ class TestIntentGraphServe:
     def test_unknown_tool_reported_not_crashed(self):
         server = self._server()
         result = self._call(server, "nonexistent_tool", {})
-        assert result.isError is True
+        assert _is_error(result)
         assert "Unknown tool" in result.content[0].text
+
+    def test_project_scoping_across_tools(self, tmp_path):
+        # one server, many projects: a memory saved under project A is never
+        # found by a recall aimed at project B (per-call project_path)
+        project = tmp_path / "project"
+        project.mkdir()
+        other = tmp_path / "other-project"
+        other.mkdir()
+        server = self._server()
+        saved = json.loads(self._call(server, "remember", {
+            "content": "belongs to project A",
+            "project_path": str(project)}).content[0].text)
+        result = self._call(server, "recall", {
+            "query": "belongs to project", "project_path": str(other)})
+        assert not _is_error(result)
+        payload = json.loads(result.content[0].text)
+        assert saved["id"] not in [r["id"] for r in payload["results"]]

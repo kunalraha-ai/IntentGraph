@@ -1,8 +1,0 @@
-       IDENTIFICATION DIVISION.
-       PROGRAM-ID. SAMPLE.
-       PROCEDURE DIVISION.
-       MAIN-PARA.
-           PERFORM HELPER-PARA.
-           STOP RUN.
-       HELPER-PARA.
-           DISPLAY 'ok'.

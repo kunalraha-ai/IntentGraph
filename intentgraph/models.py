@@ -12,7 +12,7 @@ Design decisions, recorded where they live:
   an edit produces a new version of the *same* memory rather than a new one.
 * **Explicit vs inferred.** Every edge carries ``explicit`` and ``basis`` so a
   consumer can tell a user-declared relationship from one the system inferred
-  (and why). This mirrors Graphify's EXTRACTED/INFERRED/AMBIGUOUS edge tags.
+  (and why) — the EXTRACTED/INFERRED distinction rendered on the graph.
 * **Validity is data, not deletion.** Supersession and deletion set
   ``valid_to``/``status``; rows are kept (soft delete) so history and audit
   remain intact.
@@ -359,7 +359,7 @@ class MemoryEdge:
         self.explicit = bool(explicit)
         # basis: WHY the edge exists — "user declared", "mentioned mem_x in
         # content", "extracted from import". Preserved so inferred edges stay
-        # auditable (the same honesty rule as Graphify's INFERRED tag).
+        # auditable (the same honesty rule as the EXTRACTED/INFERRED split).
         self.basis = _cap(str(basis or ""), 2048)
         self.confidence = max(0.0, min(1.0, float(confidence)))
         self.created_at = created_at or utcnow()
@@ -425,8 +425,8 @@ class Feedback:
 
 # --- validation ----------------------------------------------------------------
 #
-# Validation errors are returned as strings (caller decides to raise), the
-# same pattern as graphify.validate.validate_extraction. Malformed records must
+# Validation errors are returned as strings (caller decides to raise).
+# Malformed records must
 # be rejected before they land in the store: one bad row would otherwise ride
 # along in every export and poison every rebuild.
 

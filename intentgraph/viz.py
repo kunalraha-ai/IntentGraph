@@ -300,7 +300,7 @@ def _type_communities(G: nx.Graph) -> tuple[dict[int, list[str]], dict[int, str]
              if any(d.get("viz_record_type") == t for _, d in G.nodes(data=True))]
     for nid, d in G.nodes(data=True):
         t = d.get("viz_record_type")
-        if t not in order:
+        if t is not None and t not in order:
             order.append(t)
     communities: dict[int, list[str]] = {}
     for nid, d in G.nodes(data=True):

@@ -174,8 +174,8 @@ JSON config at `<data_dir>/intentgraph.json` (annotated template: `examples/inte
 ## Development
 
 ```bash
-uv sync --extra mcp --extra openai          # env with optional extras
-pytest tests/ -q                            # 6,448 tests pass; offline suite needs no credentials
+uv sync --extra mcp --extra tokens        # env with optional extras
+pytest tests/ -q                          # 399 tests pass offline; 5 live-provider smokes stay gated behind INTENTGRAPH_LIVE_TESTS=1
 ruff check intentgraph/ && pyright intentgraph/   # clean / 0 errors
 INTENTGRAPH_LIVE_TESTS=1 pytest tests/test_intentgraph_live_providers.py -v   # opt-in live smokes
 examples/intentgraph-demo.sh                # runnable end-to-end demo
@@ -187,8 +187,8 @@ The ordinary test suite is credential-hermetic — it disables `.env` loading an
 ## Documentation
 
 - **[docs/intentgraph.md](./docs/intentgraph.md)** — the full guide: memory model, retrieval, verification, MCP/OpenCode setup, providers (Nebius/NVIDIA/Tavily), privacy, troubleshooting, limitations
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — module map (IntentGraph layer + graph engine), symbol-verified against the code
-- **[CHANGELOG.md](./CHANGELOG.md)** — per-phase implementation record
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — module map, symbol-verified against the code
+- **[CHANGELOG.md](./CHANGELOG.md)** — release record
 
 ## Status & limitations
 
@@ -196,4 +196,4 @@ Working today: persistent archive, typed memory graph, hybrid/adaptive retrieval
 
 ## License
 
-Apache-2.0 — see [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
+MIT — see [LICENSE](./LICENSE). Provenance and attribution for earlier revisions of this repository: [NOTICE](./NOTICE).

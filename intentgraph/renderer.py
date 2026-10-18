@@ -103,7 +103,6 @@ def _styles() -> str:
   .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .legend-count { color: #666; font-size: 11px; }
   #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
-  #legend-extra { margin-top: 4px; }
 </style>"""
 
 
@@ -543,7 +542,7 @@ def to_html(
   </div>"""
     extra_block = "" if not legend_extra else (
         '<h3 style="margin-top:14px">Evidence &amp; Memory States</h3>'
-        '<div id="legend-extra"></div>')
+        '<div id="legend-extra" style="margin-top:4px"></div>')
 
     script = (_script()
              .replace("/*__NODES__*/", nodes_json)
@@ -590,8 +589,8 @@ def to_html(
     return True
 
 
-#: Community palette — the same sequence the platform's visualizations have
-#: always used, so a memory graph looks native next to a code graph.
+#: Community palette — the palette IntentGraph's memory graphs ship with,
+#: distinct from the evidence/highlight colors, which have their own meaning.
 _COMMUNITY_COLORS = [
     "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
     "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",

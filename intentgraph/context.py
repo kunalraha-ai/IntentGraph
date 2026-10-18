@@ -40,8 +40,7 @@ from intentgraph.retrieve import Candidate
 __all__ = ["ContextPacket", "compile_context", "estimate_tokens"]
 
 # Token estimation + injection-sentinel neutralization live in
-# intentgraph.tokens (IntentGraph's own module — previously these two
-# helpers were borrowed from graphify.llm via a guarded import). The names
+# intentgraph.tokens (IntentGraph's own module). The names
 # are re-exported here because existing callers (and tests) import them from
 # intentgraph.context; behavior and output strings are unchanged.
 from intentgraph.tokens import (  # noqa: F401  (re-export)

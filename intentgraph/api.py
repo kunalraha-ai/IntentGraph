@@ -1,7 +1,7 @@
 """IntentGraph local-first JSON HTTP API (stdlib http.server, no new deps).
 
 Why stdlib http.server instead of a framework: the local deployment must
-work with `pip install graphifyy` alone — no starlette, no uvicorn, no ASGI
+work with `pip install intentgraph` alone — no starlette, no uvicorn, no ASGI
 server. A threaded stdlib server comfortably serves the local one-consumer /
 small-team pattern IntentGraph targets, and a future cloud deployment can
 front the SAME core (intentgraph.sdk.IntentGraph) with any framework without

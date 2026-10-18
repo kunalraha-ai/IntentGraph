@@ -14,8 +14,8 @@ is deliberately the only place raw text becomes a record:
 * **Near-duplicates** (MinHash Jaccard >= threshold) ARE ingested — near-dup
   records often carry distinct provenance (different session, different
   source) and the master prompt's honesty rule is to keep them and *link*
-  them, not silently merge. The MinHash sketch reuses graphify's
-  ``graphify._minhash.MinHash`` (datasketch-compatible, no scipy).
+  them, not silently merge. The MinHash sketch is intentgraph.minhash's
+  own (datasketch-compatible, no scipy).
 * **Mention edges**: content that references other record ids
   (``mem_<16hex>``) gets ``mentions`` edges, marked inferred with the exact
   basis so the association is auditable.

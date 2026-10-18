@@ -1,9 +1,10 @@
 """Tests for the IntentGraph visualization adapter + renderer integration.
 
-Two sides, per the extension contract:
-- Graphify side: `to_html` with the new optional kwargs defaults to the
-  pre-feature behavior (byte-level markers absent, RAW_NODES shape
-  unchanged), and every overlay block is strictly opt-in.
+Two sides of the contract:
+- Renderer side: `intentgraph.renderer.to_html` keeps every overlay strictly
+  opt-in (a query-less render carries zero retrieval markup, plain nodes
+  keep their plain shape) and never lets data values break out of the
+  embedded script tag.
 - IntentGraph side: the adapter converts ONLY real archive data; ids,
   provenance, status, conflicts, and retrieval facts survive; missing
   metadata renders as "not recorded"; empty/insufficient states are honest.
@@ -30,7 +31,7 @@ from intentgraph.viz import (
 )
 from tests.intentgraph_scenario import build
 
-from graphify.export import to_html
+from intentgraph.renderer import to_html
 
 
 @pytest.fixture
@@ -40,10 +41,10 @@ def scenario(tmp_path):
     ig.close()
 
 
-# --- Graphify side: the default render is unchanged (opt-in only) -------------
+# --- Renderer: overlays are strictly opt-in ------------------------------------
 
 
-class TestRendererBackwardCompatibility:
+class TestRendererContract:
     def _plain_graph(self):
         G = nx.Graph()
         G.add_node("a", label="A", source_file="a.py", file_type="code")
@@ -59,7 +60,9 @@ class TestRendererBackwardCompatibility:
                        '"viz_ring"', '"shapeProperties"', "#22d3ee"):
             assert absent not in html, f"overlay marker leaked: {absent}"
 
-    def test_default_raw_nodes_shape_unchanged(self, tmp_path):
+    def test_default_raw_nodes_shape_stays_plain(self, tmp_path):
+        # a plain graph's nodes carry exactly the base fields — no overlay
+        # keys, no accidental format drift
         out = tmp_path / "g.html"
         to_html(self._plain_graph(), {0: ["a", "b"]}, str(out))
         html = out.read_text(encoding="utf-8")
@@ -67,7 +70,7 @@ class TestRendererBackwardCompatibility:
         nodes = json.loads(m.group(1).replace("<\\/", "</"))
         assert set(nodes[0].keys()) == {
             "id", "label", "color", "size", "font", "title", "community",
-            "community_name", "source_file", "file_type", "degree"}
+            "community_name", "source_file", "degree"}
 
     def test_legacy_graph_json_still_renders(self, tmp_path):
         # a graph.json from before IntentGraph existed: node-link JSON with
@@ -91,9 +94,10 @@ class TestRendererBackwardCompatibility:
         out = tmp_path / "g.html"
         to_html(self._plain_graph(), {0: ["a", "b"]}, str(out))
         html = out.read_text(encoding="utf-8")
-        # search, community filter, node info panel, neighbors, select-all
-        for marker in ('id="search"', "showInfo", "toggleAllCommunities",
-                       "neighbor-link", 'id="select-all-cb"', "Communities"):
+        # search, memory-type filter, info panel, neighbor links, focus
+        for marker in ('id="search"', "showInfo", "focusNode",
+                       "neighbor-link", "toggleCommunity", 'id="legend"',
+                       'id="stats"'):
             assert marker in html, f"interaction lost: {marker}"
 
     def test_overlay_render_adds_hud_and_reset(self, tmp_path):
@@ -274,7 +278,7 @@ class TestMemoryGraphAdapter:
             nid = list(G.nodes())[0]
             G.nodes[nid]["viz_fields"] = "not-a-list"   # wrong type
             G.nodes[nid]["viz_ring"] = 42               # wrong type
-            from graphify.export import to_html
+            from intentgraph.renderer import to_html
             out = tmp_path / "m.html"
             to_html(G, {0: [nid]}, str(out))   # must not raise
             assert out.exists()

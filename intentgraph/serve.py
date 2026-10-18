@@ -37,7 +37,7 @@ def _build_server():
         from mcp import types
     except ImportError as e:
         raise ImportError(
-            'mcp not installed. Run: pip install "graphifyy[mcp]"'
+            'mcp not installed. Run: pip install "intentgraph[mcp]"'
         ) from e
     server = Server("intentgraph", instructions=_tools.SERVER_INSTRUCTIONS)
     sessions = _tools.IntentGraphSessions()
@@ -61,11 +61,16 @@ def _build_server():
     }
 
     if hasattr(Server, "list_tools"):
-        # mcp 1.x: decorator-based registration
+        # mcp 1.x: decorator-based registration. The attribute accesses are
+        # version-specific by definition (2.x removed the decorators), so they
+        # are statically ignored; this branch only executes under 1.x.
         async def list_tools() -> list:
             from mcp import types as _t
-            return [_t.Tool(name=s["name"], description=s["description"],
-                            inputSchema=s["inputSchema"])
+            # model_validate + the wire alias keeps this valid across mcp
+            # majors (1.x field name, 2.x alias) without version-checking.
+            return [_t.Tool.model_validate({"name": s["name"],
+                                            "description": s["description"],
+                                            "inputSchema": s["inputSchema"]})
                     for s in _tools.tool_schemas()]
 
         async def call_tool(name: str, arguments: dict):
@@ -82,39 +87,42 @@ def _build_server():
                 return [types.TextContent(
                     type="text", text=f"Error executing {name}: {exc}")]
 
-        server.list_tools()(list_tools)
-        server.call_tool()(call_tool)
+        server.list_tools()(list_tools)  # pyright: ignore[reportAttributeAccessIssue]
+        server.call_tool()(call_tool)     # pyright: ignore[reportAttributeAccessIssue]
     else:
-        # mcp 2.x: constructor callbacks with the (ctx, params) contract
+        # mcp 2.x: constructor callbacks with the (ctx, params) contract.
+        # Models are built through model_validate + wire aliases so the same
+        # construction is valid on either major.
         async def _on_list_tools(ctx, params):
             from mcp import types as _t
             return _t.ListToolsResult(tools=[
-                _t.Tool(name=s["name"], description=s["description"],
-                        inputSchema=s["inputSchema"])
+                _t.Tool.model_validate({"name": s["name"],
+                                        "description": s["description"],
+                                        "inputSchema": s["inputSchema"]})
                 for s in _tools.tool_schemas()])
 
         async def _on_call_tool(ctx, params):
             name = params.name
             handler = handlers.get(name)
             if not handler:
-                return types.CallToolResult(
-                    content=[types.TextContent(
+                return types.CallToolResult.model_validate({
+                    "content": [types.TextContent(
                         type="text", text=f"Unknown tool: {name}")],
-                    isError=True)
+                    "isError": True})
             try:
                 from typing import Any as _Any
                 content: _Any = [types.TextContent(
                     type="text", text=handler(dict(params.arguments or {})))]
                 return types.CallToolResult(content=content)
             except _ToolError as exc:
-                return types.CallToolResult(
-                    content=[types.TextContent(type="text", text=str(exc))],
-                    isError=True)
+                return types.CallToolResult.model_validate({
+                    "content": [types.TextContent(type="text", text=str(exc))],
+                    "isError": True})
             except Exception as exc:  # noqa: BLE001 — never kill the server
-                return types.CallToolResult(
-                    content=[types.TextContent(
+                return types.CallToolResult.model_validate({
+                    "content": [types.TextContent(
                         type="text", text=f"Error executing {name}: {exc}")],
-                    isError=True)
+                    "isError": True})
 
         from typing import Any as _Any
         _server_cls: _Any = Server
@@ -140,7 +148,7 @@ def serve() -> None:
         from mcp.server.stdio import stdio_server
     except ImportError as e:
         raise ImportError(
-            'mcp not installed. Run: pip install "graphifyy[mcp]"') from e
+            'mcp not installed. Run: pip install "intentgraph[mcp]"') from e
     import asyncio
 
     server = _build_server()

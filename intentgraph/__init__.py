@@ -7,7 +7,7 @@ through a hybrid lexical / semantic / graph pipeline, iterates until the
 evidence covers the question, and compiles a token-budgeted, source-referenced
 context packet with explicit limitations.
 
-Layering (one-way dependency — intentgraph reuses graphify, never the reverse):
+Layering:
 
     intentgraph.models     data model: records, edges, relations, provenance
     intentgraph.store      SQLite persistence, versioning, export/import
@@ -36,7 +36,7 @@ __version__ = "0.1.0"
 
 
 def __getattr__(name: str):
-    # Lazy imports mirror graphify/__init__.py so `import intentgraph` stays
+    # Lazy imports so `import intentgraph` stays
     # cheap for callers that only need one subsystem.
     _map = {
         "MemoryRecord": ("intentgraph.models", "MemoryRecord"),

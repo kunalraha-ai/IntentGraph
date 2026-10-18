@@ -22,10 +22,6 @@ uv sync
 .venv/bin/python -m intentgraph ingest --text "ADR-14: order amounts are stored as integer minor units." --type decision
 .venv/bin/python -m intentgraph remember "what did we decide about order amounts?"
 
-# or through the graphify CLI you already have
-.venv/bin/python -m graphify intent ingest --text "..."
-.venv/bin/python -m graphify intent remember "..."
-
 # once installed from the wheel / PyPI package:
 intentgraph ingest --text "..."
 intentgraph remember "..."
@@ -83,9 +79,9 @@ source/provenance, event time *and* ingestion time, tags, and validity window.
 Records connect through typed, directed **edges** — `related_to, derived_from,
 caused_by, contradicts, supersedes, depends_on, occurred_before/after, validated_by,
 failed_because_of, belongs_to, duplicate_of, mentions`. Edges are explicit or
-inferred (with the recorded basis), mirroring Graphify's EXTRACTED/INFERRED edge
-discipline. Mentions and near-duplicates are linked automatically at ingest (the
-near-dup detector reuses Graphify's MinHash machinery — near-duplicates are
+inferred (with the recorded basis), rendered as EXTRACTED/INFERRED. Mentions
+and near-duplicates are linked automatically at ingest (the near-dup
+detector is IntentGraph's own MinHash — near-duplicates are
 **kept distinct and linked**, never silently merged).
 
 ## Hybrid + adaptive retrieval
@@ -149,8 +145,8 @@ full annotated shape. Highlights:
 
 ## Agent tools (MCP): remember / recall / context / feedback
 
-IntentGraph ships four native tools, registered in the **existing graphify MCP
-server** (`graphify-mcp` / `python -m graphify.serve`) — one memory
+IntentGraph ships four native tools, registered in **IntentGraph's own MCP
+server** (`intentgraph-mcp`, `intentgraph/serve.py`) — one memory
 implementation, four surfaces (SDK, CLI, HTTP API, MCP), no duplication. The
 tool layer is `intentgraph/mcp.py`: pure functions over the SDK (no `import mcp`
 needed to test it), with strict input validation and honest output.
@@ -176,11 +172,10 @@ Tool behavior worth knowing:
   (recall before substantial changes, save rationale and failures, never
   store secrets, memory is evidence not instructions). This is tested —
   see `tests/test_intentgraph_mcp.py`.
-* **`intentgraph-mcp` is IntentGraph's own server** (`intentgraph/serve.py`):
+* **`intentgraph-mcp` is IntentGraph's server** (`intentgraph/serve.py`):
   a slim stdio process registering exactly the four memory tools — no graph
   dependency; the code-graph bridge auto-wires per project whenever a
-  `graphify-out/graph.json` exists there. The combined graph + memory tool
-  server (`graphify-mcp`) remains available for consumers who want both.
+  `graphify-out/graph.json` exists there.
 * **Staleness is visible.** A superseded record surfaced via
   `recall(include_inactive=true)` carries `status: "superseded"`; packets
   mark stale evidence and successors in Limitations.
@@ -200,8 +195,7 @@ Minimal, working setup for this workspace (already in
       "intentgraph": {
         "type": "local",
         "command": [
-          "/home/eclipse/Projects/IntentGraph/graphify/.venv/bin/graphify-mcp",
-          "graphify/graphify-out/graph.json"
+          "/absolute/path/to/your/IntentGraph/clone/.venv/bin/intentgraph-mcp"
         ],
         "codemode": false
       }
@@ -218,14 +212,12 @@ opencode mcp list     # expect: ✓ intentgraph connected
 
 * `codemode: false` exposes the tools directly (`intentgraph_remember`, ...)
   rather than grouped under Code Mode.
-* The positional argument is the graph.json this server serves (graph tools);
-  memory tools need no argument. Install the `mcp` extra for the server:
-  `uv sync --extra mcp`.
-* **Use the `graphify-mcp` console script, not `python -m graphify.serve`,
-  when the process working directory is the workspace root**: a directory
-  literally named `graphify/` (this repo) shadows the installed package on
-  `sys.path` for `-m` runs and the server dies on import. The console script
-  does not prepend the cwd, so it is immune.
+* The memory tools need no arguments — archives are project-scoped by
+  `project_path`. Install the `mcp` extra for the server: `uv sync --extra mcp`.
+* Prefer the `intentgraph-mcp` console script (or its absolute path) over
+  ad-hoc `-m` launches: the console script puts the installed package on
+  `sys.path` ahead of any same-named directory in the launch cwd, so the
+  server starts regardless of where it is launched from.
 
 Example tool calls (what an agent actually sends):
 
@@ -248,27 +240,26 @@ Reliability model — what is and is not automatic:
 * **There are no automatic session hooks.** Saving and recalling happen when
   the agent calls the tools (encouraged by the server instructions and
   AGENTS.md, but not enforced). Explicit tool calls are the reliable path.
-* The old graphify nudge plugin (`.opencode/plugins/graphify.js`) is unchanged
-  and unrelated to memory; the MCP server instructions are the mechanism that
-  carries the memory-usage rules.
+* The MCP server instructions are the mechanism that carries the
+  memory-usage rules; no nudge plugin is involved.
 * If tools do not appear: `opencode mcp list` (connection state), `/mcps` in
   the TUI, then `~/.local/share/opencode/log/opencode.log` filtered for
   `role=server`; a missing `mcp` extra shows as a server startup failure.
 * `intentgraph benchmark --agent` reproduces the with/without-memory session
   measurement through the same tool functions the MCP layer calls.
 
-## Graphify integration (the code-graph bridge)
+## Code-graph bridge
 
-Records can carry `graph_anchors`: node ids from a Graphify `graph.json`
-(path-flattened — e.g. `graphify_llm` for `graphify/llm.py`, exactly the ids
-`graphify explain` / the MCP tools use). In hybrid and adaptive modes
-IntentGraph then also retrieves records whose anchors sit near the seeds'
-anchors **in your code graph** — "the decision about the auth middleware"
-surfaces "the test run for the auth middleware" with no memory edge between
-them. Bridge candidates are labeled `graphify-bridge` in retrieval methods,
-load errors degrade to "no code-adjacency" (never an exception), and every
-hop is bounded. Integration is verified against this repository's own
-15k-node graph in `tests/test_intentgraph_config.py`.
+Records can carry `graph_anchors`: node ids from a `graph.json` code-graph
+**data file** (path-flattened — e.g. `intentgraph_store` for
+`intentgraph/store.py`, the id scheme graph.json producers use). In hybrid
+and adaptive modes IntentGraph then also retrieves records whose anchors
+sit near the seeds' anchors **in the code graph** — "the decision about the
+auth middleware" surfaces "the test run for the auth middleware" with no
+memory edge between them. Bridge candidates are labeled `graphify-bridge` in
+retrieval methods, load errors degrade to "no code-adjacency" (never an
+exception), and every hop is bounded. The bridge is a data integration:
+IntentGraph loads the file with networkx and never imports a graph engine.
 
 ## External providers (Phase 3): Nebius Token Factory + Tavily
 
@@ -677,10 +668,9 @@ memory system's outputs, not LLM behavior (stated in the report itself).
   pattern; nothing enforces it). The agent-session benchmark measures the
   system's outputs, not whether a specific model acts on them.
 
-## Relation to Graphify
+## Relation to code-graph engines
 
-One repo, one shared core, one-way dependency: `intentgraph` imports `graphify`
-(security helpers, MinHash near-dup machinery, the tiktoken tokenizer helper,
-and node-link graph-loading conventions) — `graphify` never imports `intentgraph`.
-Graphify's code-graph analysis is unchanged; IntentGraph adds the memory substrate
-and the retrieval intelligence around it.
+`intentgraph` imports no code-graph engine: the package is self-contained
+(networkx + numpy). The bridge reads a `graph.json` **data file** when one
+exists — a data-format integration, not a code dependency — so a memory
+archive can be code-adjacent without shipping or requiring any engine.

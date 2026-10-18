@@ -1,6 +1,6 @@
-"""IntentGraph CLI — `intentgraph <command>` (and `graphify intent <command>`).
+"""IntentGraph CLI — `intentgraph <command>`.
 
-Conventions mirror the graphify CLI deliberately: subcommand dispatch on
+Conventions: subcommand dispatch on
 sys.argv, exit code 1 with a stderr line on usage errors, `--json` for
 machine-readable output, and no interactive prompts (an agent must be able
 to drive every command).
@@ -476,9 +476,9 @@ def _doctor(overrides: dict[str, Any]) -> int:
                       "export it or remove the provider")
         bridge = status["graphify_bridge"]
         if bridge["available"]:
-            print(f"graphify bridge: ACTIVE ({bridge['nodes']} nodes from {bridge['path']})")
+            print(f"code-graph bridge: ACTIVE ({bridge['nodes']} nodes from {bridge['path']})")
         else:
-            print(f"graphify bridge: off"
+            print(f"code-graph bridge: off"
                   + (f" ({bridge['error']})" if bridge["error"] else ""))
         return 0
     finally:

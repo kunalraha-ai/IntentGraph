@@ -1,23 +1,21 @@
-"""Graphify integration: bridge memories into a graph.json code graph.
+"""Code-graph bridge: link memories into a graph.json code graph.
 
-A memory record may carry ``graph_anchors``: node ids from a Graphify
-``graph.json`` (the ones produced by ``graphify extract`` — file nodes,
-symbol nodes, rationale nodes). **Anchor ids follow graphify's on-disk id
-scheme** — path-flattened, e.g. ``graphify_llm`` for ``graphify/llm.py``,
-``intentgraph_models_memoryrecord`` for a class — the exact ids graphify's
-own tools (``explain``, MCP ``get_node``) accept. This bridge lets retrieval
-follow *code structure*, not just memory edges: "the decision about the auth
-middleware" can surface "the test run for auth middleware" because both
-records anchor inside the same neighborhood of the code graph, even with no
-memory edge between them.
+A memory record may carry ``graph_anchors``: node ids from a ``graph.json``
+code graph (file nodes, symbol nodes, rationale nodes) that lives at
+``graphify-out/graph.json`` — a data-format integration: the file is loaded
+here, no code-graph engine is imported. **Anchor ids follow the graph.json
+on-disk id scheme** — path-flattened, e.g. ``intentgraph_models`` for
+``intentgraph/models.py``, ``intentgraph_models_memoryrecord`` for a class —
+the same ids graph tools that consume the file accept. This bridge lets
+retrieval follow *code structure*, not just memory edges: "the decision
+about the auth middleware" can surface "the test run for auth middleware"
+because both records anchor inside the same neighborhood of the code graph,
+even with no memory edge between them.
 
-Reuse, not duplication: the node-link graph is loaded with networkx's
-``json_graph.node_link_graph`` exactly like ``graphify.serve._load_graph``
-and the CLI ``query`` path (undirected traversal view, per-edge ``_src``/
-``_tgt`` direction markers preserved) so anchor ids and hop semantics match
-what Graphify's own tools see. Loading lives here in ~20 lines rather than
-importing ``graphify.serve`` so the memory server never drags in MCP
-machinery.
+The node-link graph is loaded with networkx's ``json_graph.node_link_graph``
+(undirected traversal view, per-edge ``_src``/``_tgt`` direction markers
+preserved) in ~20 lines — so anchor ids and hop semantics match what any
+consumer of the same file sees, without a dependency beyond networkx.
 
 All expansion is bounded (hop depth, fan-out, total nodes) and deterministic.
 If the graph file is missing, malformed, or empty, the bridge degrades to
@@ -34,7 +32,7 @@ from intentgraph.models import MemoryRecord
 
 __all__ = ["GraphifyBridge"]
 
-_MAX_GRAPH_BYTES = 200 * 1024 * 1024  # same order as graphify's own cap
+_MAX_GRAPH_BYTES = 200 * 1024 * 1024  # sanity cap on a loaded graph file
 
 
 class GraphifyBridge:

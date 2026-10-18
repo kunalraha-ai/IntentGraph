@@ -14,8 +14,7 @@ Properties:
   satisfying the "rebuildable indexes" portability requirement.
 * **Identifier-aware tokenization.** ``snake_case`` and ``camelCase`` are
   split into parts AND kept whole, so ``failed_because_of`` matches both
-  ``failed`` and the full phrase. Diacritics are folded (same treatment as
-  graphify's query normalization).
+  ``failed`` and the full phrase. Diacritics are folded.
 * **A small stopword list**, not aggressive stemming — memory content is
   often short; stemming errors ("trying"→"try" is fine, "analysis"→"analysi"
   is not) hurt more than they help. Prefix matching (trailing wildcard)

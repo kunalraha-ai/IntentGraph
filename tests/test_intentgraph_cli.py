@@ -173,7 +173,7 @@ class TestPortabilityCommands:
         rc = _run("--home", home, "doctor")
         assert rc == 0
         text = capsys.readouterr().out
-        assert "embedding" in text and "graphify bridge" in text
+        assert "embedding" in text and "code-graph bridge" in text
 
 
 class TestProviderFlags:

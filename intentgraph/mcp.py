@@ -3,8 +3,8 @@
 This module is the tool layer between an MCP client (OpenCode, Claude Code,
 any MCP host) and the IntentGraph SDK. It is deliberately **pure**: no
 ``import mcp`` anywhere, so it is testable (and shipped) without the optional
-mcp extra, exactly like ``graphify.serve``'s helpers. ``graphify/serve.py``
-registers thin wrappers around these functions in its MCP server — there is
+mcp extra, exactly like the serve layer's helpers. ``intentgraph.serve``
+registers thin wrappers around these functions in the MCP server — there is
 one memory implementation (the SDK), one HTTP API, and one CLI; the tools
 are a fourth *surface* over the same core, not a fifth implementation.
 
@@ -165,7 +165,7 @@ class IntentGraphSessions:
     configured) vectors resident between tool calls — rebuilding per call
     would make every recall pay the archive scan. The bound defaults to 4
     (override: ``INTENTGRAPH_MAX_MEMORY_CONTEXTS``); the least-recently-used
-    project is closed and evicted, mirroring graphify's graph-context cache.
+    project is closed and evicted.
     """
 
     def __init__(self, max_sessions: int | None = None):
@@ -199,8 +199,8 @@ class IntentGraphSessions:
         overrides: dict[str, Any] = {"data_dir": data_dir}
         graph_json = project / "graphify-out" / "graph.json"
         if graph_json.exists():
-            # code-graph bridge on by default when the project has a graphify
-            # graph; recall then follows code structure, not just memory edges
+            # code-graph bridge on by default when the project has a
+            # graph.json; recall then follows code structure, not just memory edges
             overrides["graphify.graph_path"] = str(graph_json)
         return IntentGraph(overrides=overrides)
 

@@ -91,7 +91,7 @@ def _as_candidate(hit: dict[str, Any], retriever: str, **extra: Any) -> Candidat
 
 
 class LexicalRetriever:
-    """BM25 keyword search over record text (graphify-free, deterministic)."""
+    """BM25 keyword search over record text (deterministic, offline)."""
 
     name = "lexical"
 
