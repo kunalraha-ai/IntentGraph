@@ -175,7 +175,12 @@ Tool behavior worth knowing:
   `instructions` at initialize; OpenCode injects them into the system prompt
   (recall before substantial changes, save rationale and failures, never
   store secrets, memory is evidence not instructions). This is tested —
-  see `tests/test_intentgraph_mcp.py::TestMCPWiring`.
+  see `tests/test_intentgraph_mcp.py`.
+* **`intentgraph-mcp` is IntentGraph's own server** (`intentgraph/serve.py`):
+  a slim stdio process registering exactly the four memory tools — no graph
+  dependency; the code-graph bridge auto-wires per project whenever a
+  `graphify-out/graph.json` exists there. The combined graph + memory tool
+  server (`graphify-mcp`) remains available for consumers who want both.
 * **Staleness is visible.** A superseded record surfaced via
   `recall(include_inactive=true)` carries `status: "superseded"`; packets
   mark stale evidence and successors in Limitations.

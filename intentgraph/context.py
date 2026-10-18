@@ -17,8 +17,8 @@ Rules the compiler follows:
   when its body was cut to three lines.
 * **Retrieved content is inert data, not instructions.** Content is wrapped
   in labeled ``<untrusted_evidence>`` blocks with a content hash, and known
-  chat-template control tokens are defanged (same sentinel scheme as
-  graphify.llm's untrusted-source wrapping, reused via guarded import).
+  chat-template control tokens are defanged (IntentGraph's own sentinel
+  scheme, :func:`intentgraph.tokens.neutralise_injection_sentinels`).
 * **Contradictions and limitations are first-class sections**, because a
   model that acts on conflicting evidence without knowing it conflicts is
   how memory systems cause harm.
@@ -39,57 +39,18 @@ from intentgraph.retrieve import Candidate
 
 __all__ = ["ContextPacket", "compile_context", "estimate_tokens"]
 
-_CHARS_PER_TOKEN = 4  # documented fallback heuristic
-
-# Reuse graphify's sentinel list when importable (it tracks the current
-# chat-template token landscape there); fall back to a minimal local list so
-# a graphify refactor can never break packet compilation.
-try:  # pragma: no cover - exercised implicitly on import
-    from graphify.llm import _neutralise_injection_sentinels as _neutralise
-except ImportError:  # pragma: no cover
-    _LOCAL_SENTINELS = re.compile(
-        r"|<\|[A-Za-z0-9_.\-]{1,64}\|>|<<SYS>>|<</SYS>>|\[/?(?:INST|SYSTEM)\]"
-        r"|^\s*###?\s*(?:system|instruction)s?\s*:?\s*$",
-        re.IGNORECASE | re.MULTILINE,
-    )
-
-    def _neutralise(text: str) -> str:  # type: ignore[misc]
-        return _LOCAL_SENTINELS.sub(
-            lambda m: m.group(0)[0] + "​" + m.group(0)[1:], text)
-
-
-def _get_tokenizer():
-    """tiktoken cl100k_base via graphify's helper, or None."""
-    try:
-        from graphify.llm import _get_tokenizer as _gt
-        return _gt()
-    except ImportError:
-        try:
-            import tiktoken
-            return tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            return None
-
-
-_TOKENIZER = _get_tokenizer()
-
-
-def estimate_tokens(text: str) -> int:
-    """Token estimate: exact when tiktoken is available, else chars/4.
-
-    ``method`` in the packet's token report says which one produced the
-    numbers, so a consumer never mistakes the approximation for a guarantee.
-    """
-    if _TOKENIZER is not None:
-        try:
-            return len(_TOKENIZER.encode(text, disallowed_special=()))
-        except Exception:
-            pass
-    return max(1, len(text) // _CHARS_PER_TOKEN)
-
-
-def token_method() -> str:
-    return "tiktoken(cl100k_base)" if _TOKENIZER is not None else f"chars/{_CHARS_PER_TOKEN} approximation"
+# Token estimation + injection-sentinel neutralization live in
+# intentgraph.tokens (IntentGraph's own module — previously these two
+# helpers were borrowed from graphify.llm via a guarded import). The names
+# are re-exported here because existing callers (and tests) import them from
+# intentgraph.context; behavior and output strings are unchanged.
+from intentgraph.tokens import (  # noqa: F401  (re-export)
+    estimate_tokens,
+    neutralise_injection_sentinels,
+    token_method,
+)
+from intentgraph.tokens import neutralise_injection_sentinels as _neutralise
+from intentgraph.tokens import _CHARS_PER_TOKEN
 
 
 # --- packet ------------------------------------------------------------------------

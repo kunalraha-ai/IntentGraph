@@ -248,9 +248,10 @@ def write_memory_html(
     include_superseded: bool = True,
 ) -> bool:
     """Render the memory archive (and optional real retrieval highlight) to
-    an interactive graph.html via Graphify's existing ``to_html``."""
-    # local import keeps graphify absent-safe in this module's import path
-    from graphify.export import to_html
+    an interactive graph.html via IntentGraph's own renderer
+    (:mod:`intentgraph.renderer` — same call contract the borrowed renderer
+    exposed, written fresh for the memory-graph use case)."""
+    from intentgraph.renderer import to_html
 
     G = build_memory_graph(
         ig, include_conversation=include_conversation,

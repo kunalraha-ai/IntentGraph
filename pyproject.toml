@@ -120,9 +120,10 @@ graphify-mcp = "graphify.serve:_main"
 # IntentGraph — neural memory & retrieval intelligence on the Graphify core.
 # Same repo, one-way dependency: intentgraph imports graphify, never the reverse.
 intentgraph = "intentgraph.__main__:main"
-# IntentGraph-branded alias for the MCP server (same entry point as
-# graphify-mcp; the server serves the memory tools + graph tools).
-intentgraph-mcp = "graphify.serve:_main"
+# IntentGraph's own MCP server: the four memory tools over stdio. The
+# graphify-mcp alias above remains for consumers who want the combined
+# graph + memory tool server.
+intentgraph-mcp = "intentgraph.serve:main"
 
 [dependency-groups]
 dev = [

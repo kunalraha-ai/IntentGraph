@@ -34,12 +34,8 @@ from intentgraph.models import (
     MemoryRecord,
     parse_timestamp,
 )
+from intentgraph.minhash import MinHash
 from intentgraph.store import MemoryStore, StoreError
-
-# Reused from graphify's dedup machinery (datasketch-compatible, no scipy).
-# numpy is a hard dependency of graphify, so this import is unconditional —
-# the same reasoning as graphify/dedup.py importing it directly.
-from graphify._minhash import MinHash
 
 __all__ = ["IngestResult", "Ingestor", "ingest", "ingest_file", "ingest_dict"]
 

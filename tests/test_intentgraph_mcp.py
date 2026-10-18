@@ -552,3 +552,85 @@ class TestMCPWiring:
         assert result.isError is not True
         payload = json.loads(result.content[0].text)
         assert a["id"] not in [r["id"] for r in payload["results"]]
+
+
+class TestIntentGraphServe:
+    """intentgraph.serve — IntentGraph's own MCP server (memory tools only).
+
+    Same tool implementations (intentgraph.mcp), own registration: slim
+    server, memory tools, usage instructions; no graph dependencies.
+    Driven synchronously via asyncio.run on the registered request handlers,
+    matching the repo's async-in-sync convention.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _needs_mcp(self):
+        pytest.importorskip("mcp")
+
+    def _server(self):
+        from intentgraph import serve as serve_mod
+        return serve_mod._build_server()
+
+    def _call(self, server, name, arguments):
+        import asyncio
+        from mcp import types as mcp_types
+
+        async def run():
+            handler = server.request_handlers[mcp_types.CallToolRequest]
+            result = await handler(mcp_types.CallToolRequest(
+                params=mcp_types.CallToolRequestParams(name=name,
+                                                       arguments=arguments)))
+            return result.root if hasattr(result, "root") else result
+        return asyncio.run(run())
+
+    def _list(self, server):
+        import asyncio
+        from mcp import types as mcp_types
+
+        async def run():
+            handler = server.request_handlers[mcp_types.ListToolsRequest]
+            return (await handler(None)).root.tools
+        return asyncio.run(run())
+
+    def test_exactly_the_four_memory_tools(self):
+        server = self._server()
+        names = {t.name for t in self._list(server)}
+        assert names == {"remember", "recall", "context", "feedback"}
+
+    def test_instructions_travel_with_the_server(self):
+        server = self._server()
+        assert server.instructions
+        assert "intentgraph_recall" in server.instructions
+        assert "Never store secrets" in server.instructions
+
+    def test_remember_recall_round_trip_without_any_graph(self, tmp_path):
+        project = tmp_path / "project"
+        project.mkdir()
+        server = self._server()
+        result = self._call(server, "remember", {
+            "content": "the archive must survive a server swap",
+            "type": "fact", "project_path": str(project)})
+        assert result.isError is not True
+        saved = json.loads(result.content[0].text)
+        result = self._call(server, "recall", {
+            "query": "server swap survival", "project_path": str(project)})
+        payload = json.loads(result.content[0].text)
+        assert saved["id"] in [r["id"] for r in payload["results"]]
+
+    def test_validation_failure_is_an_iserror_result(self, tmp_path):
+        server = self._server()
+        result = self._call(server, "remember", {
+            "content": "   ", "project_path": str(tmp_path)})
+        assert result.isError is True
+        assert "content" in result.content[0].text
+
+    def test_entry_point_module_resolves(self):
+        # the console script target imports and is callable
+        from intentgraph import serve as serve_mod
+        assert callable(serve_mod.main)
+
+    def test_unknown_tool_reported_not_crashed(self):
+        server = self._server()
+        result = self._call(server, "nonexistent_tool", {})
+        assert result.isError is True
+        assert "Unknown tool" in result.content[0].text
