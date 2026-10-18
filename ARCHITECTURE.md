@@ -128,6 +128,7 @@ evidence packet)`.
 | `controller.py` | `AdaptiveMemoryEngine` (`.run`) | question → iterative retrieve→expand→verify loop with gap-targeted follow-ups and stopping conditions |
 | `context.py` | `compile_context`, `estimate_tokens` | verified evidence → token-budgeted packet (dict + text) with untrusted-evidence fencing |
 | `graphbridge.py` | `GraphifyBridge` | `graph.json` + records with `graph_anchors` → code-adjacent record candidates |
+| `viz.py` | `build_memory_graph`, `retrieval_overlay`, `write_memory_html` | real archive records/edges + a REAL retrieve() call → nx.Graph + highlight overlay consumed by Graphify's existing `to_html` (no second renderer) |
 | `config.py` | `load_config` | defaults + JSON file + env + args → resolved `Config` (privacy hard-stop included) |
 | `sdk.py` | `IntentGraph` | everything above behind one facade (`ingest`, `retrieve`, `remember`, `export`, `status`, ...) |
 | `scenario.py` | `seed` | empty archive → canonical benchmark corpus (shared with tests) |

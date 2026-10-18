@@ -164,6 +164,16 @@ def build_parser() -> argparse.ArgumentParser:
                             "adaptive + web search arms")
 
     doc = sub.add_parser("doctor", help="diagnose configuration and archive health")
+    viz = sub.add_parser("viz", help="render the memory archive as an interactive "
+                        "graph.html via Graphify's existing renderer")
+    viz.add_argument("--query", help="run a REAL retrieval for this query and "
+                    "highlight the returned evidence on the graph")
+    viz.add_argument("--out", default=None,
+                     help="output path (default: <data_dir>/memory-graph.html)")
+    viz.add_argument("--no-conversation", action="store_true",
+                     help="exclude captured conversation events")
+    viz.add_argument("--no-superseded", action="store_true",
+                     help="exclude superseded records (they are included, gray, by default)")
     return p
 
 
@@ -376,6 +386,21 @@ def _dispatch(args: argparse.Namespace, overrides: dict[str, Any]) -> int:
         if args.out:
             Path(args.out).write_text(
                 json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+        return 0
+
+    if cmd == "viz":
+        from intentgraph.viz import write_memory_html
+        ig = _open(overrides)
+        try:
+            out = args.out or str(Path(ig.config.data_dir) / "memory-graph.html")
+            written = write_memory_html(
+                ig, out, query=args.query,
+                include_conversation=not args.no_conversation,
+                include_superseded=not args.no_superseded)
+            _json_out({"written": written, "path": out,
+                       "query": args.query or None})
+        finally:
+            ig.close()
         return 0
 
     if cmd == "doctor":

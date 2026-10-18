@@ -69,6 +69,25 @@ def _html_styles() -> str:
   #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
 </style>"""
 
+
+def _html_overlay_styles() -> str:
+    """Styles for the retrieval HUD / evidence-state legend. Emitted ONLY
+    when an overlay (retrieval or legend_extra) is present, so the default
+    render stays byte-identical to the pre-feature HTML."""
+    return """<style>
+  #retrieval-hud { padding: 12px 14px; border-bottom: 1px solid #2a2a4e; }
+  #retrieval-hud h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #retrieval-hud button { margin-top: 8px; width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #ccc; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  #retrieval-hud button:hover { border-color: #22d3ee; color: #fff; }
+  #retrieval-results { max-height: 140px; overflow-y: auto; }
+  #retrieval-results .retrieval-item { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #22d3ee; background: transparent; color: #ccc; width: 100%; text-align: left; }
+  #retrieval-results .retrieval-item:hover { background: #2a2a4e; }
+  #retrieval-results .retrieval-more { display: block; padding: 2px 6px; font-size: 11px; color: #666; }
+  #retrieval-results .empty { color: #555; font-style: italic; font-size: 12px; }
+  #retrieval-hud.retrieval-empty { opacity: 0.75; }
+  #legend-extra { margin-top: 4px; }
+</style>"""
+
 def _hyperedge_script(hyperedges_json: str) -> str:
     return f"""<script>
 // Render hyperedges as shaded regions
@@ -136,6 +155,147 @@ network.on('afterDrawing', function(ctx) {{
 }});
 </script>"""
 
+def _retrieval_script(retrieval_json: str) -> str:
+    """Highlight/dim/reset block for a REAL retrieval result (additive).
+
+    The renderer displays exactly what it is given — including the empty
+    case, which shows an explicit "no evidence returned" notice and changes
+    nothing. Direct results get a cyan status ring; graph-expanded
+    supporting context a violet one (community background colors are never
+    touched by highlighting); unrelated nodes are temporarily dimmed via
+    font/background updates that the reset control restores from the
+    RAW_NODES snapshot. A retrieval rank is a retrieval fact, never a
+    truth score — the HUD says 'evidence', not 'correct'.
+    """
+    return f"""<script>
+const RETRIEVAL = {retrieval_json};
+// Only render the HUD when a real query ran.
+(function() {{
+  const hud = document.getElementById('retrieval-hud');
+  if (!hud) return;
+  const DIRECT = '#22d3ee';   // cyan: directly retrieved evidence
+  const EXPANDED = '#8b5cf6';  // violet: graph-expanded supporting context
+  const DIM_BG = '#23233a', DIM_BORDER = '#3a3a4e', DIM_FONT = '#4a4a5a';
+  const involved = new Set(RETRIEVAL.results.map(r => r.id));
+  const tiers = {{}};
+  RETRIEVAL.results.forEach(r => {{ tiers[r.id] = r.tier || 'direct'; }});
+  let active = false;
+
+  function nodeBase(nid) {{
+    const raw = RAW_NODES.find(n => n.id === nid);
+    if (!raw) return null;
+    return {{
+      color: raw.color, font: raw.font,
+      borderWidth: raw.borderWidth !== undefined ? raw.borderWidth : undefined,
+      shapeProperties: raw.shapeProperties,
+    }};
+  }}
+
+  function applyHighlight() {{
+    if (active) return;
+    active = true;
+    const updates = [];
+    RAW_NODES.forEach(n => {{
+      if (involved.has(n.id)) {{
+        const ring = tiers[n.id] === 'expanded' ? EXPANDED : DIRECT;
+        updates.push({{ id: n.id,
+          color: {{ background: n.color.background, border: ring,
+                   highlight: {{ background: '#ffffff', border: ring }} }},
+          borderWidth: 4,
+          font: {{ size: Math.max(n.font.size, 14), color: '#ffffff' }},
+        }});
+      }} else {{
+        updates.push({{ id: n.id,
+          color: {{ background: DIM_BG, border: DIM_BORDER,
+                   highlight: {{ background: '#ffffff', border: DIM_BORDER }} }},
+          font: {{ size: n.font.size, color: DIM_FONT }},
+        }});
+      }}
+    }});
+    nodesDS.update(updates);
+    // Raise visibility of edges among involved nodes (they exist in the
+    // graph by construction); dim the rest temporarily.
+    const edgeUpdates = [];
+    edgesDS.forEach(e => {{
+      const both = involved.has(e.from) && involved.has(e.to);
+      edgeUpdates.push({{ id: e.id,
+        color: {{ color: both ? (e.viz_color || '#8f9bb3') : '#2a2a3e',
+                 opacity: both ? 0.95 : 0.12,
+                 highlight: e.viz_color || '#8f9bb3' }},
+        width: both ? 3 : 1,
+      }});
+    }});
+    edgesDS.update(edgeUpdates);
+  }}
+
+  function resetHighlight() {{
+    if (!active) return;
+    active = false;
+    const updates = [];
+    RAW_NODES.forEach(n => {{
+      const base = nodeBase(n.id);
+      if (!base) return;
+      const u = {{ id: n.id, color: base.color, font: base.font }};
+      u.borderWidth = base.borderWidth !== undefined ? base.borderWidth : 1.5;
+      u.shapeProperties = base.shapeProperties || {{}};
+      updates.push(u);
+    }});
+    nodesDS.update(updates);
+    const edgeUpdates = [];
+    edgesDS.forEach(e => {{
+      const raw = RAW_EDGES[e.id];
+      if (!raw) return;
+      edgeUpdates.push({{ id: e.id, color: raw.color, width: raw.width }});
+    }});
+    edgesDS.update(edgeUpdates);
+  }}
+
+  document.getElementById('retrieval-reset').addEventListener('click', resetHighlight);
+  const list = document.getElementById('retrieval-results');
+  if (!RETRIEVAL.results.length) {{
+    hud.classList.add('retrieval-empty');
+    list.innerHTML = '<span class="empty">No evidence returned — nothing highlighted.</span>';
+    return;  // honest empty state: no fake matches, no dimming
+  }}
+  applyHighlight();
+  const counts = {{ direct: 0, expanded: 0 }};
+  RETRIEVAL.results.forEach(r => {{ counts[r.tier || 'direct']++; }});
+  list.innerHTML =
+    RETRIEVAL.results.slice(0, 12).map(r => {{
+      const n = RAW_NODES.find(x => x.id === r.id);
+      const lbl = n ? n.label : r.id;
+      const dot = tiers[r.id] === 'expanded' ? EXPANDED : DIRECT;
+      return `<span class="retrieval-item" style="border-left-color:${{dot}}" data-nid="${{esc(r.id)}}">${{esc(lbl)}}</span>`;
+    }}).join('')
+    + (RETRIEVAL.results.length > 12
+       ? `<span class="retrieval-more">+ ${{RETRIEVAL.results.length - 12}} more</span>` : '');
+  document.getElementById('retrieval-count').textContent =
+    `${{counts.direct}} direct · ${{counts.expanded}} supporting`;
+}})();
+</script>"""
+
+
+def _legend_extra_script(legend_extra_json: str) -> str:
+    """Second legend block (memory/evidence states), emitted only when the
+    caller supplies entries — the community legend above is untouched."""
+    return f"""<script>
+const EXTRA_LEGEND = {legend_extra_json};
+(function() {{
+  const el = document.getElementById('legend-extra');
+  if (!el || !EXTRA_LEGEND.length) return;
+  EXTRA_LEGEND.forEach(c => {{
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.style.opacity = '0.85';
+    item.innerHTML = `<div class="legend-dot" style="background:${{esc(c.color)}};${{
+      c.dashes ? 'background:transparent;border:2px dashed ' + esc(c.color) + ';' : ''
+    }}"></div><span class="legend-label">${{esc(c.label)}}</span>`;
+    el.appendChild(item);
+  }});
+}})();
+</script>"""
+
+
 def _html_script(nodes_json: str, edges_json: str, legend_json: str) -> str:
     return f"""<script>
 const RAW_NODES = {nodes_json};
@@ -148,7 +308,8 @@ function esc(s) {{
 }}
 
 // Build vis datasets
-const nodesDS = new vis.DataSet(RAW_NODES.map((n, i) => ({{
+const nodesDS = new vis.DataSet(RAW_NODES.map((n, i) => {{
+  const v = {{
   id: n.id, label: n.label, color: n.color, size: n.size,
   font: n.font, title: n.title,
   // Fermat/golden-angle spiral seed positions (#3699): spreading nodes out
@@ -160,9 +321,22 @@ const nodesDS = new vis.DataSet(RAW_NODES.map((n, i) => ({{
   community: n.community, community_name: n.community_name,
   source_file: n.source_file, file_type: n.file_type, degree: n.degree,
   member_count: n.member_count,
+  }};
+  // Optional overlay styling fields (additive): nodes without them render
+  // exactly as before — these conditionals existed for none of the original
+  // nodes. shapeProperties/borderWidth/shape carry status rings & shapes;
+  // extra_fields carries evidence-panel rows; viz_ring/viz_color mark the
+  // pre-highlight state the retrieval reset restores to.
+  if (n.shapeProperties !== undefined) v.shapeProperties = n.shapeProperties;
+  if (n.borderWidth !== undefined) v.borderWidth = n.borderWidth;
+  if (n.shape !== undefined) v.shape = n.shape;
+  if (n.extra_fields !== undefined) v.extra_fields = n.extra_fields;
+  if (n.viz_ring !== undefined) v.viz_ring = n.viz_ring;
+  return v;
 }})));
 
-const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => {{
+  const v = {{
   id: i, from: e.from, to: e.to,
   label: '',
   title: e.title,
@@ -170,6 +344,9 @@ const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({{
   width: e.width,
   color: e.color,
   arrows: {{ to: {{ enabled: true, scaleFactor: 0.5 }} }},
+  }};
+  if (e.viz_color !== undefined) v.viz_color = e.viz_color;
+  return v;
 }})));
 
 const container = document.getElementById('graph');
@@ -223,6 +400,15 @@ function showInfo(nodeId) {{
     html += `<div class="field">Members: ${{esc(n.member_count)}}</div>`;
   }}
   html += `<div class="field">Degree: ${{n.degree}}</div>`;
+  // Evidence rows from an overlay (additive): ordered label/value pairs the
+  // adapter supplied — memory type, record id, event/ingest times, source
+  // session, provenance, status, retrieval rank/score. esc() is the same
+  // #1838 XSS boundary the rest of the panel uses.
+  if (n.extra_fields && n.extra_fields.length) {{
+    n.extra_fields.forEach(pair => {{
+      html += `<div class="field">${{esc(pair[0])}}: ${{esc(pair[1])}}</div>`;
+    }});
+  }}
   if (neighborIds.length) {{
     html += `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${{neighborIds.length}})</div><div id="neighbors-list">${{neighborItems}}</div>`;
   }}
@@ -416,6 +602,8 @@ def to_html(
     member_counts: dict[int, int] | None = None,
     node_limit: int | None = None,
     learning_overlay: dict | None = None,
+    retrieval: dict | None = None,
+    legend_extra: list[dict] | None = None,
 ) -> bool:
     """Generate an interactive vis.js HTML visualization of the graph.
 
@@ -428,6 +616,20 @@ def to_html(
 
     If node_limit is set and the graph exceeds it, automatically builds an
     aggregated community-level meta-graph instead of raising ValueError.
+
+    ``retrieval`` (optional, additive — the IntentGraph/Phase-4 convention):
+    a dict describing a REAL retrieval result to highlight on the graph,
+    ``{"query": str, "results": [{"id", "tier"}...], "note": str?}`` where
+    tier is "direct" or "expanded". When None (the default, and every
+    existing caller), the emitted HTML is byte-identical to the pre-feature
+    render: the highlight script, HUD, and reset control are only emitted
+    when a retrieval overlay is supplied. The renderer never fabricates
+    results — it displays exactly what it is given, including the empty
+    case ("no evidence returned — nothing highlighted").
+
+    ``legend_extra`` (optional): extra legend entries for a second legend
+    block (e.g. memory states), ``[{"color", "label", "dashes"?}]``. Only
+    rendered when non-empty, after the communities legend.
 
     Returns True when the output was written. Returns False when an aggregated
     view would contain fewer than two communities and is intentionally skipped.
@@ -550,6 +752,36 @@ def to_html(
             "file_type": data.get("file_type", ""),
             "degree": deg,
         }
+        # --- generic visualization-overlay attributes (additive) --------------
+        # An overlay (e.g. IntentGraph memory viz) may set viz_* attributes on
+        # nx node data; they are copied conditionally so nodes without them
+        # keep the exact pre-feature dict shape. The renderer stays generic:
+        # it knows the viz_* convention, not any particular overlay's semantics.
+        #   viz_shape       -> vis node shape (e.g. 'diamond' for conversation
+        #                      events vs the default 'dot')
+        #   viz_ring        -> status ring color (border); does NOT touch the
+        #                      community background color, which keeps its
+        #                      meaning (the status must not overload it)
+        #   viz_dashes      -> dashed status ring
+        #   viz_fields      -> [(label, value), ...] panel rows, sanitized here
+        #                      so no overlay value can inject markup
+        viz_ring = data.get("viz_ring")
+        if isinstance(viz_ring, str) and viz_ring:
+            node["color"] = {"background": color, "border": viz_ring,
+                             "highlight": {"background": "#ffffff", "border": viz_ring}}
+            node["borderWidth"] = 3
+            node["viz_ring"] = sanitize_label(viz_ring)
+        if data.get("viz_dashes"):
+            node["shapeProperties"] = {"borderDashes": [4, 4]}
+        viz_shape = data.get("viz_shape")
+        if isinstance(viz_shape, str) and viz_shape:
+            node["shape"] = viz_shape
+        viz_fields = data.get("viz_fields")
+        if isinstance(viz_fields, list) and viz_fields:
+            node["extra_fields"] = [
+                [sanitize_label(str(lbl)), sanitize_label(str(val))]
+                for lbl, val in viz_fields[:16]
+            ]
         if member_counts:
             node["member_count"] = member_counts.get(cid, len(communities.get(cid, [])))
         # Conditional learning fields — only present for annotated nodes, so
@@ -594,7 +826,7 @@ def to_html(
         relation = data.get("relation", "")
         true_src = data.get("_src", u)
         true_tgt = data.get("_tgt", v)
-        vis_edges.append({
+        edge = {
             "from": true_src,
             "to": true_tgt,
             "label": relation,
@@ -603,7 +835,17 @@ def to_html(
             "width": 2 if confidence == "EXTRACTED" else 1,
             "color": {"opacity": 0.7 if confidence == "EXTRACTED" else 0.35},
             "confidence": confidence,
-        })
+        }
+        # generic overlay edge accent (additive): an overlay may mark an edge
+        # with viz_color (e.g. amber for a declared contradiction) — applied
+        # as the edge's border color at existing opacity, never replacing the
+        # dash/width confidence semantics
+        viz_color = data.get("viz_color")
+        if isinstance(viz_color, str) and viz_color:
+            edge["color"] = {"color": sanitize_label(viz_color),
+                             "opacity": 0.9, "highlight": sanitize_label(viz_color)}
+            edge["viz_color"] = sanitize_label(viz_color)
+        vis_edges.append(edge)
 
     # Build community legend data
     legend_data = []
@@ -624,6 +866,24 @@ def to_html(
     title = _html.escape(sanitize_label(_html_document_title(output_path)))
     stats = f"{G.number_of_nodes()} nodes &middot; {G.number_of_edges()} edges &middot; {len(communities)} communities"
 
+    # --- additive retrieval HUD / extra legend (only when an overlay exists) --
+    # retrieval and legend_extra default to None/[] at every existing caller,
+    # so these blocks are absent and the emitted HTML is byte-identical to
+    # the pre-feature render unless an overlay explicitly opts in.
+    retrieval_json = _js_safe(retrieval or {"query": "", "results": []})
+    legend_extra_json = _js_safe(legend_extra or [])
+    retrieval_block = ""
+    if retrieval is not None:
+        q = _html.escape(sanitize_label(str(retrieval.get("query", ""))))
+        note = _html.escape(sanitize_label(str(retrieval.get("note", ""))))
+        retrieval_block = f"""<script>
+const RETRIEVAL_QUERY = "{q}";
+const RETRIEVAL_NOTE = "{note}";
+</script>""" + _retrieval_script(retrieval_json)
+    legend_extra_block = _legend_extra_script(legend_extra_json) if legend_extra else ""
+    # overlay styles ship only with an overlay — default render unchanged
+    overlay_styles = _html_overlay_styles() if (retrieval is not None or legend_extra) else ""
+
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -633,6 +893,7 @@ def to_html(
         integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
         crossorigin="anonymous"></script>
 {_html_styles()}
+{overlay_styles}
 </head>
 <body>
 <div id="graph"></div>
@@ -645,17 +906,27 @@ def to_html(
     <h3>Node Info</h3>
     <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
   </div>
+  {f'''<div id="retrieval-hud">
+    <h3>Retrieved Evidence</h3>
+    <div class="field" style="font-size:12px;color:#aaa">{f"Query: {q}" if q else ""}</div>
+    <div id="retrieval-count" class="field" style="font-size:11px;color:#888"></div>
+    <div id="retrieval-results"></div>
+    <button id="retrieval-reset" type="button">Reset highlighting</button>
+  </div>''' if retrieval is not None else ""}
   <div id="legend-wrap">
     <h3>Communities</h3>
     <div id="legend-controls">
       <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
     </div>
     <div id="legend"></div>
+    {f'<h3 style="margin-top:14px">Evidence &amp; Memory States</h3><div id="legend-extra"></div>' if legend_extra else ""}
   </div>
   <div id="stats">{stats}</div>
 </div>
 {_html_script(nodes_json, edges_json, legend_json)}
 {_hyperedge_script(hyperedges_json)}
+{retrieval_block}
+{legend_extra_block}
 </body>
 </html>"""
 

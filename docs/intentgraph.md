@@ -529,6 +529,53 @@ produce zero external calls; a freshness question's call count and status).
 Results state their own limits: small synthetic corpus, this machine and
 account, wiring and latency/tokens — not production-corpus quality claims.
 
+## Visualization: memory on the Graphify graph
+
+`intentgraph viz` renders the real memory archive as an interactive
+graph.html **through Graphify's existing renderer** — no second renderer, no
+replacement: the adapter (`intentgraph/viz.py`) converts real records and
+typed edges into the `nx.Graph` + overlay shape `to_html` already consumes,
+and every existing interaction (search, community filter, node panel,
+zoom/pan, select-all) is preserved.
+
+```bash
+intentgraph viz                                   # memory graph → <data_dir>/memory-graph.html
+intentgraph viz --query "what did we try for the checkout regression?"   # + real retrieval highlight
+intentgraph viz --no-conversation                 # knowledge memories only
+```
+
+What renders, honestly:
+
+* **Two layers.** Knowledge memories (decisions, facts, lessons, failed
+  approaches) render as the familiar dots grouped by memory type into
+  communities (colors keep their community meaning); captured **conversation
+  events** render as diamonds with an explicit "captured turn — not a
+  verified fact" panel row, and consecutive same-session turns get an
+  `occurred_before` edge marked INFERRED with its basis (derived, viz-only —
+  never written to the store).
+* **Retrieval highlighting uses real retrieval.** `--query` runs the actual
+  hybrid retrieve and highlights exactly what it returned: cyan ring =
+  direct evidence, violet = graph-expanded supporting context, everything
+  else temporarily dimmed; a Reset button restores the full graph. Rank and
+  score appear in each hit's panel as retrieval facts ("Retrieval rank: #3
+  (score 0.016, via lexical)") — never as truth values. Empty results show
+  "No evidence returned — nothing highlighted" and change nothing.
+* **Status without color-theft.** Memory state rides the border ring, never
+  the community background: amber = declared contradiction (both endpoints
+  stay visible and inspectable; the contradicts edge is amber — nothing
+  resolves the conflict in the picture), gray dashed = superseded/historical
+  with the successor named in the panel. Deleted records are excluded by
+  default.
+* **Evidence panel.** Clicking a memory node shows its real fields — type,
+  stable record id, event/ingested times, source session, tags, provenance
+  keys, status, conflicts — with "not recorded" for genuinely absent
+  metadata (a defaulted source type with no id is not provenance).
+* **Backward compatibility.** `to_html` without the new optional
+  `retrieval`/`legend_extra` arguments emits the pre-feature HTML: no HUD,
+  no extra legend, identical `RAW_NODES` shape (asserted by tests). Legacy
+  `graph.json` files render unchanged, and Graphify never imports
+  `intentgraph` — the adapter is the only bridge.
+
 ## The HTTP API
 
 `intentgraph api` serves a stdlib-only JSON API (no starlette/uvicorn needed):
