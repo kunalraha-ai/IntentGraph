@@ -117,6 +117,8 @@ intentgraph supersede <old> <new>           # atomic validity + edge
 intentgraph retrieve "query" --mode hybrid  # one round
 intentgraph remember "question" --budget 4000  # adaptive → evidence packet
 intentgraph viz --query "question"          # interactive graph with real highlights
+intentgraph codegraph build .                # native codebase graph (Python)
+intentgraph codegraph stats|show|path|render  # inspect and query the code graph
 intentgraph api                             # local HTTP API
 intentgraph benchmark [--agent|--providers] # reproducible measurements
 intentgraph embed [--list-models]           # semantic index / model discovery
@@ -147,6 +149,25 @@ intentgraph viz --query "what did we try for the checkout regression?"
 
 The real memory archive rendered as an interactive `graph.html` — knowledge memories grouped by type, captured conversation events as diamonds explicitly labeled "not a verified fact", and the query's **actual retrieval results** highlighted (cyan = direct evidence, violet = graph-expanded supporting context, everything else dimmed, one-click reset). Contradictions amber on both endpoints, superseded records gray-dashed with their successor named. No fake connections, no fabricated matches: empty retrieval renders "No evidence returned — nothing highlighted."
 
+## Codebase graphs (native, Python)
+
+`intentgraph codegraph build .` scans a repository and writes a typed, evidence-backed `codegraph-out/graph.json` — written from first principles with Python's standard `ast` parser and NetworkX, with **no external code-graph engine installed, imported, or used**. The graph feeds both the retrieval and visualization layers: memory records can anchor to code nodes (`ingest --anchors` / `update --anchors`), and `intentgraph codegraph render` draws the code graph through the same interactive renderer.
+
+- **Extracted (Python only today):** modules, classes, functions, methods; imports (in-repo, resolved), statically provable calls and references, inheritance, test→code links, entry points (`if __name__ == "__main__":`), file ownership, and `contains`/`defines` structure.
+- **Evidence discipline:** every edge is `EXTRACTED` (proven from source) or `INFERRED` (documented heuristic: ambiguous base resolution, naming-convention test links). External dependencies (stdlib/site-packages) and anything unresolvable are recorded as metadata and counters — never invented as edges.
+- **Honest limits:** lexical, best-effort static analysis — dynamic attributes, monkey-patching, and local-variable type tracking are out of scope and reported as unresolved counts. A `LanguageParser` protocol exists for adding other languages; none are implemented yet.
+- **Deterministic:** sorted scans, content-derived stable ids (path-flattened, matching the bridge's documented anchor scheme), and byte-identical exports for identical trees. `.gitignore` (practical subset), built-in excludes (venvs, caches, build output, memory archives), secret-like files never read, symlinks never followed, size and count limits reported.
+
+```bash
+intentgraph codegraph build . --verbose     # scan → graph.json (+ stats in stdout)
+intentgraph codegraph stats                 # types, relations, components, hubs, cycles
+intentgraph codegraph show <node_id>        # attributes + typed edges (+ neighborhood)
+intentgraph codegraph path <a> <b>           # deterministic shortest paths
+intentgraph codegraph render                 # interactive graph.html
+```
+
+Output is schema-versioned (`graph.schema: intentgraph-codegraph`); legacy `graph.json` files without the marker stay valid, and a file from a newer schema version is refused with a clear error — never silently reinterpreted.
+
 ## Benchmarks (measured, honestly labeled)
 
 Reproducible with `intentgraph benchmark`, `--agent`, and `--providers`. The corpora are small and synthetic with hand-verified ground truth — these numbers validate wiring, selectivity, and honesty, not production-corpus quality:
@@ -175,7 +196,7 @@ JSON config at `<data_dir>/intentgraph.json` (annotated template: `examples/inte
 
 ```bash
 uv sync --extra mcp --extra tokens        # env with optional extras
-pytest tests/ -q                          # 399 tests pass offline; 5 live-provider smokes stay gated behind INTENTGRAPH_LIVE_TESTS=1
+pytest tests/ -q                          # 475 tests pass offline; 5 live-provider smokes stay gated behind INTENTGRAPH_LIVE_TESTS=1
 ruff check intentgraph/ && pyright intentgraph/   # clean / 0 errors
 INTENTGRAPH_LIVE_TESTS=1 pytest tests/test_intentgraph_live_providers.py -v   # opt-in live smokes
 examples/intentgraph-demo.sh                # runnable end-to-end demo

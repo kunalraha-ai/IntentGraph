@@ -12,6 +12,7 @@ build/
 .ruff_cache/
 *.so
 *.egg
+codegraph-out/
 graphify-out/
 # IntentGraph local memory archives — user data, never commit
 intentgraph-data/

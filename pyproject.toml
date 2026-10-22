@@ -55,7 +55,7 @@ include-package-data = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = [
-    "intentgraph-data", "graphify-out", "dist", "build",
+    "intentgraph-data", "codegraph-out", "graphify-out", "dist", "build",
 ]
 
 [tool.ruff]

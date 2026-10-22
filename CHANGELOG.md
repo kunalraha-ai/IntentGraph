@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — native codebase graphs (the codegraph engine)
+
+- **`intentgraph/codegraph/`** (new): IntentGraph's own code-graph engine, written from first principles (stdlib `ast` + networkx — no external code-graph engine installed, imported, or used). Pipeline: scan → parse → index → resolve → build → analyze → export. **Python only** (stated honestly everywhere); a `LanguageParser` protocol + `PARSERS` registry is the extension point for other languages.
+- Evidence discipline: nodes typed `repository`/`directory`/`module`/`test`/`class`/`function`/`method`; edges `contains`/`defines`/`imports`/`calls`/`inherits`/`references`/`tests` with EXTRACTED vs INFERRED confidence, source file/line provenance, and merged evidence locations. External and statically unresolvable relationships are per-node metadata (`imports_external`, `imports_unresolved`) and counters — never invented edges. The internal graph is a relation-keyed MultiDiGraph, so parallel relations between the same pair never collapse.
+- Determinism: sorted scans; path-derived stable ids matching the bridge's documented anchor scheme (verified string-equal against the legacy engine's ids for surviving files, so existing `graph_anchors` keep resolving); deterministic `__2` collision suffixing; byte-identical exports for identical trees. `.gitignore` practical subset (incl. `!` negation), built-in excludes (venvs, caches, build output, memory archives), secret-like files never read, symlinks never followed, size/count limits with explicit truncation reporting.
+- Exports: `codegraph-out/graph.json` (node-link, schema-versioned `intentgraph-codegraph` v1, per-link `_src`/`_tgt` direction markers, renderer-ready fields) and GraphML. Legacy marker-less files stay valid; files from a newer schema version are refused with a clear error — never silently reinterpreted.
+- CLI: `intentgraph codegraph build|refresh|stats|show|path|render` (options: `--output --exclude --include-tests/--no-include-tests --max-files --max-file-size --format json|graphml --html --verbose`); `update --anchors` attaches memories to code nodes without rewriting content.
+- Integration: the bridge auto-wires `codegraph-out/graph.json` first (legacy `graphify-out/` fallback) and reports the loaded graph's schema; the renderer accepts an optional `lexicon` so code graphs render with code wording (the memory-graph default render is byte-identical to before).
+- Analysis: graph stats, bounded import cycles, hubs, direction-aware orphan candidates (dunder methods and test symbols excluded by policy — candidates, not proven dead code), deterministic shortest paths with edge relations, bounded neighborhoods, connected components.
+- Tests: 55 new tests covering extraction fidelity, ids/determinism, ignores/secrets/symlinks/limits, cycles/paths/orphans, empty repositories, bridge+renderer+memory integration, CLI behavior, and a clean-interpreter proof that the engine builds graphs with Graphify absent. ARCHITECTURE.md's codegraph table is doc-sync guarded. Suite after the change: 475 pass / 5 live-gated; ruff + pyright clean.
+
 ## 0.1.0 (2026-10-18) — first standalone release
 
 IntentGraph ships as its own product: persistent memory and retrieval intelligence for AI agents. One package (`intentgraph/`), MIT-licensed, local-first — the default configuration makes zero network calls.

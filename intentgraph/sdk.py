@@ -434,6 +434,8 @@ class IntentGraph:
             "path": self.bridge.graph_path,
             "available": self.bridge.available,
             "nodes": self.bridge.node_count,
+            "schema": self.bridge.schema.get("schema"),
+            "schema_version": self.bridge.schema.get("schema_version"),
             "error": self.bridge.load_error,
         }
         stats["lexical_index"] = {"docs": len(self.lexical),

@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="intentgraph",
         description="IntentGraph — persistent memory and retrieval intelligence "
-                    "for AI systems (built on Graphify).")
+                    "for AI systems.")
     p.add_argument("--home", help="data directory (default: ./intentgraph-data; "
                                   "env: INTENTGRAPH_HOME)")
     p.add_argument("--json", action="store_true", help="emit machine-readable JSON")
@@ -71,7 +71,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="conversation|file|tool|agent|api|import|manual|url")
     ing.add_argument("--source-id", help="where it came from (session id, path, ...)")
     ing.add_argument("--event-time", help="when it happened, if known (ISO or YYYY-MM-DD)")
-    ing.add_argument("--anchors", help="comma-separated Graphify graph.json node ids")
+    ing.add_argument("--anchors", help="comma-separated code-graph node ids "
+                     "(from `intentgraph codegraph build`)")
 
     getp = sub.add_parser("get", help="fetch a memory by id")
     getp.add_argument("id")
@@ -102,6 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     upd.add_argument("--text", help="new content (stdin if omitted)")
     upd.add_argument("--file", help="new content from a local file")
     upd.add_argument("--note", default="", help="why this version changed")
+    upd.add_argument("--anchors", help="attach (replace) code-graph node ids; "
+                     "usable alone for a content-less re-anchor")
 
     sup = sub.add_parser("supersede", help="mark one memory replaced by another")
     sup.add_argument("old_id")
@@ -165,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doc = sub.add_parser("doctor", help="diagnose configuration and archive health")
     viz = sub.add_parser("viz", help="render the memory archive as an interactive "
-                        "graph.html via Graphify's existing renderer")
+                        "graph.html via IntentGraph's renderer")
     viz.add_argument("--query", help="run a REAL retrieval for this query and "
                     "highlight the returned evidence on the graph")
     viz.add_argument("--out", default=None,
@@ -174,6 +177,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="exclude captured conversation events")
     viz.add_argument("--no-superseded", action="store_true",
                      help="exclude superseded records (they are included, gray, by default)")
+
+    # native codebase-graph engine (scan → parse → resolve → graph → export)
+    from intentgraph.codegraph import cli as codegraph_cli
+    codegraph_cli.register(sub)
     return p
 
 
@@ -281,8 +288,12 @@ def _dispatch(args: argparse.Namespace, overrides: dict[str, Any]) -> int:
 
     if cmd == "update":
         ig = _open(overrides)
-        content = _read_text_arg(args)
-        rec = ig.update(args.id, content=content, note=args.note)
+        kwargs: dict[str, Any] = {"note": args.note}
+        if args.anchors is not None:
+            kwargs["graph_anchors"] = _parse_tags(args.anchors)
+        if args.text or args.file or (args.anchors is None and not sys.stdin.isatty()):
+            kwargs["content"] = _read_text_arg(args)
+        rec = ig.update(args.id, **kwargs)
         _json_out(rec)
         return 0
 
@@ -405,6 +416,10 @@ def _dispatch(args: argparse.Namespace, overrides: dict[str, Any]) -> int:
 
     if cmd == "doctor":
         return _doctor(overrides)
+
+    if cmd == "codegraph":
+        from intentgraph.codegraph import cli as codegraph_cli
+        return codegraph_cli.run(args)
 
     parser_error = f"unknown command: {cmd}"
     raise SystemExit(parser_error)

@@ -13,8 +13,9 @@ Memory tools work without them being connected too: `.venv/bin/python -m intentg
 
 ## development
 
-- One product package: `intentgraph/` (memory, retrieval, verification, context packets, providers, viz, MCP server). There is no code-graph engine in this repo; `intentgraph.graphbridge` reads a `graph.json` **data file** when one exists — it never imports a graph engine.
+- One product package: `intentgraph/` (memory, retrieval, verification, context packets, providers, viz, MCP server, and the native `codegraph` engine). Code graphs are built by `intentgraph/codegraph/` from first principles (stdlib `ast` + networkx); no external code-graph engine exists in this repo.
 - `uv sync --extra mcp --extra tokens` for the dev environment.
 - `pytest tests/ -q` must stay green; it is credential-hermetic and runs offline (live provider smokes are the `INTENTGRAPH_LIVE_TESTS=1` opt-in).
 - `ruff check intentgraph/` and `pyright intentgraph/` must stay clean.
-- Docs are code-guarded: ARCHITECTURE.md's module table is enforced by `tests/test_architecture_doc.py` — update the table when renaming or adding entry points.
+- Docs are code-guarded: ARCHITECTURE.md's module tables (IntentGraph layer + Codegraph engine) are enforced by `tests/test_architecture_doc.py` — update the tables when renaming or adding entry points.
+- Codegraph rules: evidence-backed edges only (EXTRACTED/INFERRED, never invented), deterministic scans and ids, and no multi-language claims — Python is the only implemented parser.

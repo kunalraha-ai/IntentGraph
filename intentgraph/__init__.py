@@ -1,11 +1,11 @@
 """IntentGraph — neural memory and retrieval intelligence for AI systems.
 
-IntentGraph gives an AI system a persistent, connected, evolving memory built
-on top of Graphify's graph foundation. It stores original evidence (records)
-with provenance, connects them with a typed relationship graph, retrieves them
-through a hybrid lexical / semantic / graph pipeline, iterates until the
-evidence covers the question, and compiles a token-budgeted, source-referenced
-context packet with explicit limitations.
+IntentGraph gives an AI system a persistent, connected, evolving memory.
+It stores original evidence (records) with provenance, connects them with a
+typed relationship graph, retrieves them through a hybrid lexical /
+semantic / graph pipeline, iterates until the evidence covers the question,
+and compiles a token-budgeted, source-referenced context packet with
+explicit limitations.
 
 Layering:
 
@@ -18,7 +18,8 @@ Layering:
     intentgraph.verify     evidence verification: supersession, conflicts, gaps
     intentgraph.controller adaptive memory-activation engine (iterative loop)
     intentgraph.context    token-budgeted evidence-packet compiler
-    intentgraph.graphbridge expansion into a Graphify graph.json via anchors
+    intentgraph.codegraph  native codebase-graph engine (scan → parse → resolve → export)
+    intentgraph.graphbridge expansion into a code-graph graph.json via anchors
     intentgraph.config     env + file configuration, privacy controls
     intentgraph.sdk        IntentGraph facade (the programmatic entry point)
     intentgraph.api        local-first JSON HTTP API (stdlib, no new deps)
@@ -26,8 +27,9 @@ Layering:
     intentgraph.eval       reproducible benchmark with known-evidence fixtures
 
 Everything deterministic (storage, lexical retrieval, graph traversal, evidence
-checks, context compilation) works with no configured model. Embeddings,
-reranking and LLM-assisted planning are opt-in through provider interfaces.
+checks, context compilation, codegraph builds) works with no configured model.
+Embeddings, reranking and LLM-assisted planning are opt-in through provider
+interfaces.
 """
 
 from __future__ import annotations

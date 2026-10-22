@@ -248,18 +248,72 @@ Reliability model — what is and is not automatic:
 * `intentgraph benchmark --agent` reproduces the with/without-memory session
   measurement through the same tool functions the MCP layer calls.
 
+## Native code graphs (`intentgraph codegraph`)
+
+IntentGraph builds codebase graphs itself — no external code-graph engine is
+installed, imported, or used. `intentgraph codegraph build .` scans a
+repository, parses Python with the standard library's `ast` module (analyzed
+code is never executed), and writes a typed, evidence-backed
+`codegraph-out/graph.json`:
+
+```bash
+intentgraph codegraph build . --verbose   # scan → graph.json (JSON report on stdout)
+intentgraph codegraph stats               # node/edge counts, components, hubs, cycles, orphans
+intentgraph codegraph show intentgraph_store_memorystore_add_edge   # one node, typed edges
+intentgraph codegraph path intentgraph_cli_main intentgraph_store_supersede
+intentgraph codegraph render              # interactive graph.html of the code graph
+```
+
+What it extracts today — **Python only**, stated plainly:
+
+- structure: repository / directories / modules (test modules typed `test`),
+  classes, functions, methods; `contains` and `defines` edges;
+- imports: in-repo module dependencies, resolved (external ones are listed
+  as `imports_external`, never edged);
+- calls and references that are *statically provable* (bound names, `self`
+  /`cls`/`super()` through own and base classes);
+- inheritance (`inherits`), entry points (the `__main__` guard), and
+  `tests` edges (EXTRACTED when a test module imports the code, INFERRED
+  when only the `test_<name> ↔ <name>.py` convention matches).
+
+Everything the static resolver cannot prove — dynamic attributes, monkey
+patching, local-variable types — is reported as counters, never invented as
+edges. Node ids are the path-flattened scheme the bridge documents
+(`intentgraph/models.py` → `intentgraph_models`; class `Feedback` there →
+`intentgraph_models_feedback`), so anchors written against one build keep
+matching later rebuilds of the same tree. Exports are byte-deterministic
+for identical trees; secret-like files (`.env`, keys) are never read; symlinks
+are never followed; `.gitignore` (a practical subset) and built-in excludes
+(venvs, caches, build output, `intentgraph-data/`) apply; size/count limits
+are reported. The graph block carries `schema: intentgraph-codegraph`,
+`schema_version: 1` — files from a newer schema version are refused with a
+clear error, and legacy files without the marker stay valid. A
+`LanguageParser` protocol (`intentgraph/codegraph/python_parser.py`) is the
+extension point for other languages; none are implemented yet.
+
 ## Code-graph bridge
 
 Records can carry `graph_anchors`: node ids from a `graph.json` code-graph
-**data file** (path-flattened — e.g. `intentgraph_store` for
-`intentgraph/store.py`, the id scheme graph.json producers use). In hybrid
-and adaptive modes IntentGraph then also retrieves records whose anchors
-sit near the seeds' anchors **in the code graph** — "the decision about the
-auth middleware" surfaces "the test run for the auth middleware" with no
-memory edge between them. Bridge candidates are labeled `graphify-bridge` in
+**data file** produced by `intentgraph codegraph build` (or any compatible
+generator) — a data-format integration: IntentGraph loads the file with
+networkx and never imports a graph engine. The bridge auto-wires per
+project whenever `codegraph-out/graph.json` (native output) or
+`graphify-out/graph.json` (legacy) exists there. In hybrid and adaptive
+modes IntentGraph then also retrieves records whose anchors sit near the
+seeds' anchors **in the code graph** — "the decision about the auth
+middleware" surfaces "the test run for the auth middleware" with no memory
+edge between them. Bridge candidates are labeled `graphify-bridge` in
 retrieval methods, load errors degrade to "no code-adjacency" (never an
-exception), and every hop is bounded. The bridge is a data integration:
-IntentGraph loads the file with networkx and never imports a graph engine.
+exception), and every hop is bounded.
+
+Attach code entities to memories explicitly (evidence-supplied links, never
+inferred):
+
+```bash
+intentgraph ingest --text "ADR-14: amounts are integer minor units." \
+    --type decision --anchors intentgraph_models_memoryrecord
+intentgraph update <mem_id> --anchors intentgraph_store,intentgraph_cli
+```
 
 ## External providers (Phase 3): Nebius Token Factory + Tavily
 
@@ -671,6 +725,8 @@ memory system's outputs, not LLM behavior (stated in the report itself).
 ## Relation to code-graph engines
 
 `intentgraph` imports no code-graph engine: the package is self-contained
-(networkx + numpy). The bridge reads a `graph.json` **data file** when one
-exists — a data-format integration, not a code dependency — so a memory
-archive can be code-adjacent without shipping or requiring any engine.
+(networkx + numpy), and its own `codegraph` engine builds code graphs from
+first principles (stdlib `ast`, no external tool). The bridge reads a
+`graph.json` **data file** when one exists — a data-format integration, not
+a code dependency — so a memory archive can be code-adjacent whether the
+graph came from `intentgraph codegraph build` or any compatible generator.

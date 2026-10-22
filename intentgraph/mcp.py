@@ -197,11 +197,15 @@ class IntentGraphSessions:
         else:
             data_dir = str(project / "intentgraph-data")
         overrides: dict[str, Any] = {"data_dir": data_dir}
-        graph_json = project / "graphify-out" / "graph.json"
-        if graph_json.exists():
-            # code-graph bridge on by default when the project has a
-            # graph.json; recall then follows code structure, not just memory edges
-            overrides["graphify.graph_path"] = str(graph_json)
+        # code-graph bridge on by default when the project has a graph.json
+        # (the native engine writes codegraph-out/; graphify-out/ files from
+        # legacy tools remain equally supported); recall then follows code
+        # structure, not just memory edges
+        for candidate in ("codegraph-out/graph.json", "graphify-out/graph.json"):
+            graph_json = project / candidate
+            if graph_json.exists():
+                overrides["graphify.graph_path"] = str(graph_json)
+                break
         return IntentGraph(overrides=overrides)
 
     def get(self, project_path: str | None) -> IntentGraph:

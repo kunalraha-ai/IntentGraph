@@ -1,16 +1,19 @@
 """Code-graph bridge: link memories into a graph.json code graph.
 
 A memory record may carry ``graph_anchors``: node ids from a ``graph.json``
-code graph (file nodes, symbol nodes, rationale nodes) that lives at
-``graphify-out/graph.json`` — a data-format integration: the file is loaded
-here, no code-graph engine is imported. **Anchor ids follow the graph.json
-on-disk id scheme** — path-flattened, e.g. ``intentgraph_models`` for
-``intentgraph/models.py``, ``intentgraph_models_memoryrecord`` for a class —
-the same ids graph tools that consume the file accept. This bridge lets
-retrieval follow *code structure*, not just memory edges: "the decision
-about the auth middleware" can surface "the test run for auth middleware"
-because both records anchor inside the same neighborhood of the code graph,
-even with no memory edge between them.
+code graph (file nodes, symbol nodes) that lives at ``codegraph-out/graph.json``
+(written by IntentGraph's native ``intentgraph codegraph build``) or
+``graphify-out/graph.json`` (legacy-compatible) — a data-format integration:
+the file is loaded here, no code-graph engine is imported. **Anchor ids
+follow the graph.json id scheme** — path-flattened lowercase, e.g.
+``intentgraph_models`` for ``intentgraph/models.py``,
+``intentgraph_models_memoryrecord`` for a class, as produced by
+``intentgraph codegraph build`` (schema documented in
+``intentgraph/codegraph/schema.py``). This bridge lets retrieval follow
+*code structure*, not just memory edges: "the decision about the auth
+middleware" can surface "the test run for auth middleware" because both
+records anchor inside the same neighborhood of the code graph, even with no
+memory edge between them.
 
 The node-link graph is loaded with networkx's ``json_graph.node_link_graph``
 (undirected traversal view, per-edge ``_src``/``_tgt`` direction markers
@@ -43,6 +46,7 @@ class GraphifyBridge:
         self._G = None
         self._anchor_index: dict[str, set[str]] = {}  # node id → record ids
         self._load_error: str = ""
+        self._schema: dict[str, Any] = {}
         if graph_path:
             self._load(graph_path)
 
@@ -55,6 +59,13 @@ class GraphifyBridge:
     @property
     def load_error(self) -> str:
         return self._load_error
+
+    @property
+    def schema(self) -> dict[str, Any]:
+        """The loaded file's ``graph`` attribute block, when present — native
+        engine files identify themselves (schema name + version); legacy
+        files carry nothing (empty dict)."""
+        return dict(self._schema)
 
     @property
     def node_count(self) -> int:
@@ -74,6 +85,9 @@ class GraphifyBridge:
             from networkx.readwrite import json_graph
 
             data = json.loads(p.read_text(encoding="utf-8"))
+            meta = data.get("graph")
+            if isinstance(meta, dict):
+                self._schema = dict(meta)
             if "links" not in data and "edges" in data:
                 data = dict(data, links=data["edges"])
             # Mirror the CLI `query` loader: traverse undirected so a leaf

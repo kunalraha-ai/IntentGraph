@@ -1,6 +1,6 @@
 # Architecture
 
-IntentGraph is a Python library with four surfaces over one core: the SDK (`intentgraph.sdk.IntentGraph`), a CLI (`intentgraph`), a local HTTP API (`intentgraph.api`), and MCP agent tools (`intentgraph.mcp` + `intentgraph.serve`). One package (`intentgraph/`), one storage engine (SQLite). There is no dependency on any code-graph engine: the optional code-graph bridge (`intentgraph.graphbridge`) reads a `graph.json` **data file** via networkx — nothing more.
+IntentGraph is a Python library with four surfaces over one core: the SDK (`intentgraph.sdk.IntentGraph`), a CLI (`intentgraph`), a local HTTP API (`intentgraph.api`), and MCP agent tools (`intentgraph.mcp` + `intentgraph.serve`). One package (`intentgraph/`), one storage engine (SQLite). There is no dependency on any external code-graph engine: IntentGraph *builds* code graphs natively (`intentgraph/codegraph/`), and the optional code-graph bridge (`intentgraph.graphbridge`) also accepts externally produced `graph.json` **data files** via networkx — nothing more.
 
 ## Pipeline
 
@@ -43,6 +43,26 @@ Signatures below are the real ones — `tests/test_architecture_doc.py` imports 
 | `mcp.py` | `tool_schemas`, `tool_remember`, `tool_recall`, `tool_context`, `tool_feedback`, `IntentGraphSessions` | validated agent-tool args (registered by `intentgraph.serve` as `remember`/`recall`/`context`/`feedback`) → SDK calls → compact JSON / evidence-packet text |
 
 The table follows a no-drift rule: every lowercase symbol it names is importable (guarded by `tests/test_architecture_doc.py`).
+
+## Codegraph engine (`intentgraph/codegraph/`)
+
+A native, independently written codebase-graph engine: scan a repository, parse its source (Python, via the standard library `ast` — analyzed code is never executed), resolve imports/calls/inheritance statically, and emit a typed, evidence-backed graph. No external code-graph package is installed or imported.
+
+Pipeline: `scan → parse → index symbols → resolve references → build graph → analyze → export`.
+
+| Module | Entry point(s) | Input → Output |
+|--------|----------------|----------------|
+| `schema.py` | `file_id`, `directory_id`, `symbol_id_part`, `IdRegistry` | repository-relative path / symbol qualname → stable flattened node ids (with deterministic collision suffixing) |
+| `scan.py` | `scan_repository`, `ScanOptions` | repository root → deterministic file list + honest skip records (gitignore subset, built-in excludes, secret-name skip, size/count limits, symlinks never followed) |
+| `python_parser.py` | `PythonParser`, `PARSERS`, `module_name_for`, `is_test_path` | source text → ParsedModule (definitions, imports, call sites, name uses, entry-point guard); `LanguageParser` protocol is the extension point for other languages |
+| `build.py` | `build_graph`, `BuildOptions` | scan + parses → typed nx.MultiDiGraph (EXTRACTED vs INFERRED evidence; unresolved/external imports recorded, never edged) |
+| `analyze.py` | `load_graph`, `graph_stats`, `import_cycles`, `find_paths`, `neighborhood`, `node_report`, `orphan_candidates`, `components` | graph.json → stats, bounded cycles/hubs/orphan-candidates, deterministic paths, bounded neighborhoods |
+| `export.py` | `to_node_link`, `write_json`, `write_graphml`, `communities_by_directory` | build → deterministic bridge/renderer-compatible node-link JSON (`graph.schema: intentgraph-codegraph` v1) or GraphML |
+| `cli.py` | `register`, `run` | argv → `intentgraph codegraph build/refresh/stats/show/path/render` |
+
+**Node types:** `repository`, `directory`, `module` (non-test `.py`), `test` (test module), `class`, `function`, `method` (`file` is reserved for future parsers whose files are not importable modules). **Edge types:** `contains` (repo→dir→module), `defines` (module→symbol), `imports` (module→module, resolved in-repo only), `calls` / `references` / `inherits` (symbol→symbol, statically proven), `tests` (test module→tested module; EXTRACTED via imports, INFERRED via naming convention). Everything the resolver cannot prove is metadata (per-node `imports_unresolved`, `imports_external` lists) and counters — never an invented edge.
+
+**Id scheme** (the bridge's documented anchor contract): repository-relative path, lowercased, extension stripped, `/` and `.` flattened to `_` — `intentgraph/models.py` → `intentgraph_models`; symbols append the lowercased dotted qualname — `MemoryStore.add_edge` in `intentgraph/store.py` → `intentgraph_store_memorystore_add_edge`. Ids are content-addressed by the tree, never by machine paths or scan order; they change when the path/qualname changes, and rare flatten-collisions get deterministic `__2`-style suffixes.
 
 ## Confidence labels
 

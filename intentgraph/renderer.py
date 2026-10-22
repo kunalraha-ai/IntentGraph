@@ -434,16 +434,27 @@ def to_html(
     community_labels: dict[int, str] | None = None,
     retrieval: dict | None = None,
     legend_extra: list[dict] | None = None,
+    lexicon: dict[str, str] | None = None,
 ) -> bool:
     """Render a memory graph to an interactive, self-contained graph.html.
 
     ``retrieval`` (optional): a REAL retrieval overlay,
     ``{"query", "results": [{"id", "tier"}...]}``; when None the HUD is
     absent. ``legend_extra`` (optional): evidence/memory-state legend
-    entries ``[{"color", "label", "dashes"?}]``.
+    entries ``[{"color", "label", "dashes"?}]``. ``lexicon`` (optional):
+    UI wording overrides for rendering NON-memory graphs (a code graph
+    should not say "Memory Types"); defaults keep the memory phrasing, so
+    existing renders are unchanged.
 
     Returns True when the file was written.
     """
+    lex = dict(_DEFAULT_LEXICON)
+    lex.update(lexicon or {})
+    lex_title = _html.escape(lex["title_prefix"])
+    lex_search = _html.escape(lex["search_placeholder"])
+    lex_info = _html.escape(lex["info_heading"])
+    lex_hint = _html.escape(lex["empty_hint"])
+    lex_legend = _html.escape(lex["legend_heading"])
     degree = dict(G.degree())
     max_deg = max(degree.values(), default=1) or 1
     node_community = {nid: cid for cid, members in communities.items()
@@ -557,7 +568,7 @@ def to_html(
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>IntentGraph — {title}</title>
+    <title>{lex_title} — {title}</title>
 {_VIS_NETWORK_TAG}
 {_styles()}
 {_overlay_styles() if retrieval is not None else ""}
@@ -566,16 +577,16 @@ def to_html(
 <div id="graph"></div>
 <div id="sidebar">
   <div id="search-wrap">
-    <input id="search" type="text" placeholder="Search memories..." autocomplete="off">
+    <input id="search" type="text" placeholder="{lex_search}" autocomplete="off">
     <div id="search-results"></div>
   </div>
   <div id="info-panel">
-    <h3>Memory Info</h3>
-    <div id="info-content"><span class="empty">Click a memory to inspect it</span></div>
+    <h3>{lex_info}</h3>
+    <div id="info-content"><span class="empty">{lex_hint}</span></div>
   </div>
   {hud}
   <div id="legend-wrap">
-    <h3>Memory Types</h3>
+    <h3>{lex_legend}</h3>
     <div id="legend"></div>
     {extra_block}
   </div>
@@ -595,3 +606,13 @@ _COMMUNITY_COLORS = [
     "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
     "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
 ]
+
+#: UI wording, memory-graph defaults. `intentgraph codegraph render` passes
+#: a code-oriented lexicon so a code graph never claims to show memories.
+_DEFAULT_LEXICON = {
+    "title_prefix": "IntentGraph",
+    "info_heading": "Memory Info",
+    "empty_hint": "Click a memory to inspect it",
+    "search_placeholder": "Search memories...",
+    "legend_heading": "Memory Types",
+}
