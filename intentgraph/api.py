@@ -409,7 +409,10 @@ class IntentGraphAPIHandler(BaseHTTPRequestHandler):
             "https://api.vachana.ai/api/v1/tts/inference",
             data=payload, method="POST",
             headers={"Content-Type": "application/json",
-                     "X-API-Key-ID": api_key})
+                     "X-API-Key-ID": api_key,
+                     # Cloudflare blocks Python's default User-Agent
+                     # (error 1010); any custom UA passes
+                     "User-Agent": "IntentGraph/0.1"})
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 audio = resp.read()
