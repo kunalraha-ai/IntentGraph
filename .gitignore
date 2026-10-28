@@ -1,0 +1,28 @@
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.so
+*.egg
+codegraph-out/
+graphify-out/
+# IntentGraph local memory archives — user data, never commit
+intentgraph-data/
+# Credentials — NEVER commit real keys; .env is loaded at runtime only
+.env
+.claude/
+skills/
+.vscode/
+.kilo
+openspec/
+
+# macOS Finder metadata
+.DS_Store

@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intentgraph"
+version = "0.1.0"
+description = "Persistent memory and retrieval intelligence for AI agents — evidence-backed memory, hybrid + adaptive retrieval, MCP agent tools, local-first by default"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+keywords = ["ai-agents", "memory", "agent-memory", "retrieval", "rag", "graphrag", "mcp", "evidence", "knowledge-graph", "local-first"]
+requires-python = ">=3.10"
+dependencies = [
+    "networkx>=3.4",
+    "numpy>=1.21",
+]
+
+[project.urls]
+Homepage = "https://github.com/kunalraha-ai/IntentGraph"
+Repository = "https://github.com/kunalraha-ai/IntentGraph"
+Issues = "https://github.com/kunalraha-ai/IntentGraph/issues"
+
+[project.optional-dependencies]
+# intentgraph/serve.py is dual-compat with the mcp 1.x decorator API and the
+# 2.x on_* constructor-callback API (registration is picked at runtime in
+# _build_server); capped below 3 as the tested range.
+mcp = ["mcp>=1,<3"]
+# intentgraph/tokens.py: exact token counts via tiktoken cl100k_base when
+# installed; without it a documented chars/4 estimate is used.
+tokens = ["tiktoken"]
+all = ["mcp>=1,<3", "tiktoken"]
+
+[project.scripts]
+intentgraph = "intentgraph.__main__:main"
+# IntentGraph's MCP server: the four memory tools over stdio.
+intentgraph-mcp = "intentgraph.serve:main"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.409",
+    "pytest>=9.0.3",
+    "ruff>=0.15.13",
+]
+
+[tool.uv]
+# Install via: uv sync            (library + console scripts)
+#             uv sync --extra mcp (adds the MCP server dependency)
+package = true
+
+[tool.setuptools]
+packages = ["intentgraph"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+# The web UI assets served by `intentgraph api` at /
+intentgraph = ["frontend/*.html", "frontend/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    "intentgraph-data", "codegraph-out", "graphify-out", "dist", "build",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.pyright]
+include = ["intentgraph", "tests"]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"

@@ -1,0 +1,15 @@
+IntentGraph
+Copyright 2026 Kunal Raha
+
+This software is licensed under the MIT License (see LICENSE).
+
+Provenance: earlier revisions of this repository incorporated and
+distributed the Graphify graph engine
+(https://github.com/Graphify-Labs/graphify), Copyright 2026 Safi Shamsi and
+the Graphify contributors, under the Apache License, Version 2.0. That code
+has been completely removed from this repository. Its copyright, patent,
+and attribution notices apply to the historical revisions, which remain
+available upstream at the Graphify repository linked above. The current
+tree consists of original IntentGraph work (the intentgraph/ package, its
+test suite, documentation, and examples) plus third-party dependencies
+under their own licenses.

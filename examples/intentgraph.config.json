@@ -1,0 +1,87 @@
+{
+  "//": "IntentGraph configuration — see docs/intentgraph.md. Resolution order: defaults → this file → environment → explicit args. Copy to <data_dir>/intentgraph.json or point INTENTGRAPH_CONFIG at it. NEVER put API keys in this file — all credentials come from environment variables.",
+
+  "data_dir": "intentgraph-data",
+
+  "embedding": {
+    "//": "none = semantic retrieval disabled, zero network (default). hash = deterministic local lexical projection (TEST/FALLBACK, not real semantics). nebius = Nebius Token Factory (https://api.tokenfactory.nebius.com/v1/, OpenAI-compatible). nvidia = NVIDIA NIM (https://integrate.api.nvidia.com/v1, NVIDIA_API_KEY with nvapi-* keys; home of nvidia/nemotron-3-embed-1b). openai = any other OpenAI-compatible endpoint (Ollama, vLLM, LiteLLM).",
+    "provider": "none",
+    "//model": "REQUIRED for nebius/openai and never defaulted — accounts differ. Pick from `intentgraph embed --list-models` output.",
+    "model": "",
+    "base_url": "",
+    "batch": 64,
+    "timeout_s": 60,
+    "//api_key": "leave empty; the env vars win: for nebius NEBIUS_API_KEY → NEBIUS_TOKEN_FACTORY_KEY; for nvidia NVIDIA_API_KEY; generic INTENTGRAPH_EMBEDDING_API_KEY; openai also accepts OPENAI_API_KEY."
+  },
+
+  "llm": {
+    "//": "Optional LLM-assisted retrieval planning (query decomposition + action selection). Deterministic policy is the default and ALWAYS the fallback on auth/rate-limit/schema failures.",
+    "provider": "none",
+    "//model": "e.g. a chat model your account serves (meta-llama/Meta-Llama-3.1-8B-Instruct, Qwen/…); must be set when provider != none.",
+    "model": "",
+    "base_url": "",
+    "max_output_tokens": 1024,
+    "timeout_s": 30
+  },
+
+  "reranker": {
+    "//": "Optional remote reranking over Token Factory's POST /v1/rerank (vLLM-style). Model availability is ACCOUNT-DEPENDENT — verify yours with --list-models and the live smoke test; the API docs example is Qwen/Qwen3-Reranker-8B (an example, not a guaranteed default).",
+    "provider": "none",
+    "model": "",
+    "top_n": 10,
+    "timeout_s": 20
+  },
+
+  "web_search": {
+    "//": "Optional Tavily search (POST https://api.tavily.com/search). off by default. External results are never user memories; nothing is persisted unless store_results is true.",
+    "provider": "none",
+    "//enabled": "gate for the adaptive controller's automatic use. false = zero automatic requests; `intentgraph websearch` stays available as an explicit manual search.",
+    "enabled": false,
+    "max_results": 5,
+    "//max_calls_per_query": "per-remember() budget for automatic searches (0 disables the automatic path).",
+    "max_calls_per_query": 1,
+    "//search_depth": "basic|advanced|fast|ultra-fast (advanced costs 2 Tavily credits, others 1).",
+    "search_depth": "basic",
+    "//topic": "general|news|finance.",
+    "topic": "general",
+    "//time_range": "day|week|month|year (empty = no filter).",
+    "time_range": "",
+    "include_domains": [],
+    "exclude_domains": [],
+    "timeout_s": 15,
+    "retries": 2,
+    "content_max_chars": 2000,
+    "//store_results": "EXPLICIT opt-in to persist external findings as ordinary memory records with full external provenance (origin: external_search, url, provider, request id). Default false.",
+    "store_results": false
+  },
+
+  "graphify": {
+    "//": "Optional path to a Graphify graph.json; records carrying graph_anchors then also retrieve through your code graph's neighborhoods.",
+    "graph_path": "",
+    "hop_depth": 2
+  },
+
+  "retrieval": {
+    "mode": "adaptive",
+    "max_iterations": 3,
+    "max_working_set": 24,
+    "max_candidates": 50,
+    "graph_depth": 2,
+    "context_budget_tokens": 4000,
+    "timeout_s": 30.0,
+    "//weights": "RRF fusion weights; graph lower on purpose — expansion is corroboration, not a primary source.",
+    "weights": { "exact": 1.4, "lexical": 1.0, "semantic": 1.0, "graph": 0.7 }
+  },
+
+  "api": {
+    "//": "Loopback bind by default. A non-loopback bind REQUIRES api_key (the server refuses to start otherwise).",
+    "host": "127.0.0.1",
+    "port": 8710,
+    "api_key": ""
+  },
+
+  "privacy": {
+    "//": "true = refuse EVERY remote provider class at load time: external embeddings, LLM planning, remote reranking, and enabled web search. The privacy hard-stop.",
+    "local_only": false
+  }
+}
