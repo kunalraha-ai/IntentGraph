@@ -49,6 +49,9 @@ import os
 import re
 import sys
 import threading
+import urllib.error
+import urllib.request
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -272,6 +275,11 @@ class IntentGraphAPIHandler(BaseHTTPRequestHandler):
             with self.api.lock:
                 status = self.api.ig.status()
             status.pop("lexical_index", None)  # index internals, not API data
+            status["voice"] = {
+                "provider": "gnani" if os.environ.get("GNANI_API_KEY", "").strip() else "none",
+                "available": bool(os.environ.get("GNANI_API_KEY", "").strip()),
+                "fallback": "browser-speech-synthesis",
+            }
             self._send_json(200, status)
             return
         if path == "/v1/code-links":
@@ -366,6 +374,53 @@ class IntentGraphAPIHandler(BaseHTTPRequestHandler):
             self._error(404, str(exc))
         except Exception as exc:  # noqa: BLE001 — never leak internals
             self._error(500, f"internal error: {type(exc).__name__}")
+
+    def _voice_route(self, data: dict[str, Any]) -> Any:
+        """Proxy Gnani Timbre TTS: text → audio (MP3 bytes).
+
+        Reads GNANI_API_KEY from the environment; without it, the route
+        reports the provider as unconfigured so the client falls back to
+        the browser's speechSynthesis.
+        """
+        api_key = os.environ.get("GNANI_API_KEY", "").strip()
+        if not api_key:
+            raise _ClientError(503, "no voice provider configured — set "
+                                    "GNANI_API_KEY (see docs/intentgraph.md)")
+        text = str(data.get("text") or "").strip()
+        if not text:
+            raise _ClientError(400, "text is required")
+        language = str(data.get("language") or "auto").strip()
+        voice = str(data.get("voice") or "Shivani").strip()
+        speed = min(1.15, max(0.85, float(data.get("speed") or 1.0)))
+        model = str(data.get("model") or "timbre-v3.0").strip()
+        payload = json.dumps({
+            "text": text[:2000],
+            "voice": voice,
+            "model": model,
+            "language": language,
+            "speed": speed,
+            "audio_config": {
+                "sample_rate": 22050,
+                "container": "mp3",
+                "bitrate": "64k",
+            },
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.vachana.ai/api/v1/tts/inference",
+            data=payload, method="POST",
+            headers={"Content-Type": "application/json",
+                     "X-API-Key-ID": api_key})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                audio = resp.read()
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:300]
+            raise _ClientError(exc.code, f"Gnani voice error: {detail}")
+        except Exception as exc:
+            raise _ClientError(502, f"voice provider unreachable: {exc}")
+        if not audio:
+            raise _ClientError(502, "voice provider returned empty audio")
+        return {"audio": audio.hex(), "format": "mp3"}
 
     def _post_route(self, path: str, data: dict[str, Any]) -> Any:
         ig = self.api.ig
@@ -462,6 +517,9 @@ class IntentGraphAPIHandler(BaseHTTPRequestHandler):
             return ig.feedback(query, outcome,
                                memory_ids=data.get("memory_ids") or None,
                                note=str(data.get("note") or ""))
+
+        if path == "/v1/voice":
+            return self._voice_route(data)
 
         if path == "/v1/replay":
             # evidence replay: a step-by-step navigation script from a

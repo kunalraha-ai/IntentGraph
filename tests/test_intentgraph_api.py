@@ -439,3 +439,27 @@ class TestReplayEndpoint:
         assert "Replay.start" in html           # the engine is injected
         assert "speechSynthesis" in html         # voice guide
         assert "replay-timeline" in html        # playback controls
+
+
+class TestVoiceEndpoint:
+    def test_voice_reports_unconfigured_without_key(self, server, monkeypatch):
+        monkeypatch.delenv("GNANI_API_KEY", raising=False)
+        status, body = _request(_base(server), "POST", "/v1/voice",
+                                {"text": "hello"})
+        assert status == 503
+        assert "GNANI_API_KEY" in body["error"]
+
+    def test_voice_requires_text(self, server, monkeypatch):
+        monkeypatch.setenv("GNANI_API_KEY", "vach_dummy")
+        status, body = _request(_base(server), "POST", "/v1/voice",
+                                {"text": "  "})
+        assert status == 400
+
+    def test_status_reports_voice_provider(self, server, monkeypatch):
+        monkeypatch.setenv("GNANI_API_KEY", "vach_dummy")
+        status, body = _request(_base(server), "GET", "/v1/status")
+        assert body["voice"]["available"] is True
+        assert body["voice"]["provider"] == "gnani"
+        monkeypatch.delenv("GNANI_API_KEY", raising=False)
+        status, body = _request(_base(server), "GET", "/v1/status")
+        assert body["voice"]["available"] is False
