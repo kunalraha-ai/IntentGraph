@@ -1,10 +1,19 @@
 # IntentGraph
 
-**Persistent memory and retrieval intelligence for AI agents.**
+**Persistent memory and retrieval intelligence for AI agents — powered by NVIDIA Nemotron on Nebius Token Factory.**
 
 IntentGraph gives an AI system a memory that survives the session: it ingests what happened — decisions and their rationale, failed experiments, test outcomes, external evidence — connects those memories with typed, auditable relationships, and then, when asked, retrieves the *evidence* behind an answer instead of a plausible guess.
 
 The centerpiece is the **evidence packet**: a token-budgeted, source-referenced context containing the retrieved memories with their provenance, the relationships between them, any contradictions or superseded records surfaced (never silently resolved), and an explicit verdict — `sufficient`, `partial`, or `insufficient`. When the archive does not answer the question, IntentGraph says so instead of inventing.
+
+## Built with NVIDIA Nemotron on Nebius Token Factory
+
+| NVIDIA model | Role | Where it runs |
+|---|---|---|
+| **`nvidia/nemotron-3-embed-1b`** | Semantic embeddings — every memory is vectorized for meaning-based retrieval (2048 dims, live-verified) | NVIDIA NIM (`integrate.api.nvidia.com`) |
+| **`nvidia/Nemotron-3-5-Lightning`** | LLM-assisted retrieval planning — the adaptive controller sends evidence-requirement prompts to Nemotron for smarter, gap-targeted retrieval (with a deterministic fallback on any failure) | Nebius Token Factory (OpenAI-compatible API) |
+
+The embedding provider is switchable between NVIDIA NIM and Nebius Token Factory by editing two config lines — stored vectors are keyed by provider+model+endpoint and never mixed. Both providers are live-tested and green.
 
 ```
 uv sync
@@ -144,9 +153,10 @@ intentgraph doctor                          # configuration + archive diagnosis
 
 | Provider | Role | Notes |
 |---|---|---|
-| **Nebius Token Factory** | embeddings (default remote), optional LLM planning, reranker interface | OpenAI-compatible; `NEBIUS_API_KEY`; model discovery via `embed --list-models` |
-| **NVIDIA NIM** | embeddings | Serves the NVIDIA-built embedding models (`nvidia/nemotron-3-embed-1b`, …); `NVIDIA_API_KEY` (nvapi-*); switch providers by editing two config lines |
+| **NVIDIA NIM** | **embeddings (default)** | `nvidia/nemotron-3-embed-1b` (2048 dims, NVIDIA open source model, live-verified); `NVIDIA_API_KEY` (nvapi-*); serves the embedding models Token Factory lacks |
+| **Nebius Token Factory** | **LLM planning (default)** + embeddings | `nvidia/Nemotron-3-5-Lightning` for retrieval planning via Token Factory's OpenAI-compatible API; `NEBIUS_API_KEY`; also serves `Qwen/Qwen3-Embedding-8B` as the alternative embedding provider |
 | **Tavily** | selective web search | Triggered only for freshness-demanding questions; results carry full provenance and are never user memories; persistence is explicit opt-in |
+| **Gnani AI** | Evidence Replay voice | Timbre v3.0 TTS in 11 languages (10 Indian + English); falls back to browser speechSynthesis when not configured |
 | Any OpenAI-compatible endpoint | embeddings / planning | Ollama, vLLM, LiteLLM, … via `base_url` |
 
 Credentials live in a gitignored `.env` (template: `.env.example`) loaded automatically; real environment variables always win; keys never appear in config files, logs, or errors. Model switching is safe: stored vectors are keyed by provider+model+endpoint, the index refuses to mix vector spaces (even identical dimensions), and `intentgraph embed` reindexes after a switch. A catalog entry is never assumed to serve — probe or smoke-test the exact model first.
@@ -238,3 +248,42 @@ Working today: persistent archive, typed memory graph, hybrid/adaptive retrieval
 ## License
 
 MIT — see [LICENSE](./LICENSE). Provenance and attribution for earlier revisions of this repository: [NOTICE](./NOTICE).
+
+## Track: Personal AI
+
+IntentGraph is an always-on, private assistant that works for you while keeping your data under your control:
+
+- **Persistent memory**: decisions, failed experiments, test outcomes — all with provenance, surviving across sessions
+- **Reusable skills**: four MCP tools (`remember`, `recall`, `context`, `feedback`) plug into any AI agent (OpenCode, Claude Code, any MCP host)
+- **Data under your control**: SQLite archive on your machine, no cloud dependency, zero network calls by default
+- **Carries out tasks**: the adaptive controller iteratively retrieves, verifies, and compiles evidence packets with explicit verdicts
+
+### NVIDIA open source models used
+
+| Model | Role | How to see it |
+|---|---|---|
+| `nvidia/nemotron-3-embed-1b` | Semantic embeddings for every memory in the archive | `intentgraph doctor` → shows `embedding.provider: openai:nvidia/nemotron-3-embed-1b:7ca1fa dim=2048` |
+| `nvidia/Nemotron-3-5-Lightning` | LLM-assisted retrieval planning (evidence-requirement analysis) | `intentgraph doctor` → shows `llm assist: ACTIVE (nebius)` |
+
+### Where Nebius Token Factory accelerated the workflow
+
+- **Embeddings**: Token Factory's OpenAI-compatible API provided instant access to Qwen/Qwen3-Embedding-8B during development, with no infrastructure to manage. When we needed NVIDIA-built embedding models (which Token Factory doesn't serve), the same OpenAI-compatible interface let us switch to NVIDIA NIM with a 2-line config change — no code changes needed.
+- **LLM planning**: Token Factory serves `nvidia/Nemotron-3-5-Lightning` for the adaptive controller's evidence-planning prompts — a NVIDIA open source model running on Nebius infrastructure, giving us NVIDIA model access without leaving the Token Factory ecosystem.
+- **Model discovery**: `intentgraph embed --list-models` queries Token Factory's model catalog to discover what an account actually serves — verified that Token Factory has no NVIDIA embedding model, which drove the decision to use NIM for embeddings alongside Token Factory for LLM planning.
+
+### Feedback on Nebius Token Factory and NVIDIA tools
+
+- **Token Factory**: the OpenAI-compatible API is the right design — we were able to add a new provider (NVIDIA NIM) by changing only the base URL and model name. The model catalog endpoint is genuinely useful for verification (we found that `nvidia/embed-qa-4` is listed but 404s on inference — the catalog is not proof of servability). The one gap: Token Factory doesn't serve NVIDIA-built embedding models, which forced us to use NIM for that role.
+- **NVIDIA NIM**: the `integrate.api.nvidia.com` endpoint works exactly as documented — same OpenAI-compatible interface, clean responses, no surprises. `nvidia/nemotron-3-embed-1b` produces clean 2048-dim vectors with sub-second latency for short texts.
+- **NVIDIA Nemotron**: the Nemotron family is well-integrated — the embedding model and the LLM planning model share the same interface shape, making it trivial to use both in one system.
+
+### What was significantly updated during the Submission Period
+
+IntentGraph was extended significantly during this period:
+
+- **Native codebase-graph engine** (`intentgraph/codegraph/`): a from-scratch Python AST-based graph engine that scans a repository, extracts typed entities (modules, classes, functions, calls, inheritance, imports), and builds an interactive knowledge graph — no external graph tools used
+- **Cross-graph evidence linking** (`intentgraph/codelink.py`, `intentgraph/codequery.py`): memory records are wired to code entities through three verification tiers (explicit, extracted from text references, semantic candidates), enabling "why does this code exist?" queries that surface both the code and the decisions behind it
+- **Evidence Replay** (`intentgraph/replay.py`, `frontend/replay.js`): the signature feature — a cinematic graph navigation that zooms through the retrieval trail with glowing nodes, traveling edge-light, voice narration in 11 languages (via Gnani AI Timbre v3.0), and playback controls
+- **Web UI** (the interactive knowledge graph with a view-switcher dropdown, served by the local API at `/`)
+- **NVIDIA Nemotron as the active embedding provider** + **Nemotron LLM planning via Token Factory** (the dual-NVIDIA-model configuration)
+- **Provider hardening**: honest semantic-status reporting (empty index vs unconfigured provider), atomic graph writes, bridge performance fix (63s → 1.3s on real-size graphs)
